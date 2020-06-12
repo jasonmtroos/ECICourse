@@ -1,0 +1,16 @@
+Package: ECICourse
+Title: Data and Tools for my Experimentation and Causal Inference Course
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Jason",
+           family = "Roos",
+           role = c("aut", "cre"),
+           email = "my_first_initial_and_last_name@rsm.nl",
+           comment = c(ORCID = "0000-0001-9764-5128"))
+Description: Provides data and maybe also some tools for my course Experimentation and Causal Inference.
+License: GPL-3
+Encoding: UTF-8
+Language: en-US
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.0
