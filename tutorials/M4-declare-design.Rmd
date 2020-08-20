@@ -1,0 +1,262 @@
+---
+title: "R Tutorial: Using simulation to design experiments"
+output: 
+  rmarkdown::html_document:
+    fig_width: 6
+    fig_height: 4
+    mathjax: null
+    theme: cerulean
+    highlight: pygments
+    self_contained: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+pre > code.sourceCode a {
+  display: none;
+}
+pre {
+  border-width: 0px;
+}
+code {
+  border-width: 0px;
+}
+</style>
+
+
+```{r, include = FALSE}
+# if (require(canvasapicore)) {
+#   knitr::opts_knit$set(upload.fun = function(file) {
+#     canvasapicore::load_token_and_domain()
+#     resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+#     structure(resp$url, XML = resp)
+#   })
+# }
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the top-right corner of this page.
+
+Start by loading packages:
+
+```{r setup}
+library(ECICourse)
+library(tidyverse)
+```
+
+Also load the DeclareDesign package:
+
+```{r}
+library(DeclareDesign)
+```
+
+
+This tutorial introduces the DeclareDesign package. This package (really a family of packages including randomizr, fabricatr, and estimatr) provides a standardized interface for defining and evaluating the properties of an experimental design. 
+
+The package has a  web site with a lot of introductory materials ([link](https://declaredesign.org/getting-started/)). It is extremely  flexible and powerful. It is also somewhat abstract, and for that reason it can be a bit confusing in places. The goal of this tutorial therefore is to help you get acquainted with the most basic features of the package, using a running example based a simple experiment with blocked assignment.
+
+## Model-Inquiry-Data strategy-Answer strategy
+
+The DeclareDesign package is based on a philosophy that splits an experimental study into four parts. I will explain  these  briefly here.  For more information, you might want to look at the authors' page describing the MIDA approach ([link](https://declaredesign.org/mida/)).
+
+Imagine we are considering an experiment among a population of 250 students, all of whom are enrolled in the same MSc program. Gender will play a role in the study, and we know that 62% of students in this program are female. The experiment will sample from this population, and assign students to either a treatment or control conditions. We want to know how much the treatment changes attitudes (the outcome variable).
+
+###  Model
+
+The first step in using DeclareDesign is to model the population of interest. Ideally, our model of the population will be a good description of the population we are trying to study. In practice, it will be a rather stylized depiction.
+
+```{r}
+population <- declare_population(
+  N = 250,                        # number of students
+  female =
+    sample(
+      x = c(0, 1),                # 0 - male; 1 - female
+      size = N,
+      replace = TRUE,
+      prob = c(.38, .62)          # proportion of female students
+    ),
+  attitude_toward_recycling =
+    pmin(100,                     # max rating is 100
+         10 * (female == 1)  +    # higher among female students
+           sample(
+             x = seq_len(100),    # ratings between 1 and 100
+             size = N,
+             replace = TRUE
+          ))
+)
+```
+
+This defines an object called `population`. There are `N = 250` people in this population, of which 62% have `female == 1`. There is also a latent variable  called `attitude_toward_recycling` drawn as a uniform random variable between 1 and 100, which represents an unmeasured, prior attitude towards recycling. We believe that attitudes towards recycling are about 10 points higher among female students, on average, so we include that in the model as well. (The `pmin` function limits the maximum value of the attitude measure to be 100.)
+
+The resulting object, called `population`, can be called like a function. If we do so, it will generate a random population based  on our specification. We can use this to check that attitudes towards recycling are in fact higher among female students, and that none of the attitude measures are greater than 100:
+
+```{r}
+population() %>%
+  group_by(female) %>%
+  summarise(across(attitude_toward_recycling, list(mean = mean, max = max)))
+```
+
+The  next step in using DeclareDesign is to define the potential outcomes under treatment and control. In this experiment, we plan to show the treatment group a 10 minute video about recycling, and let the control group  browse the internet for 10 minutes. The potential outcomes represent the students' attitudes towards recycling, measured on a scale of 1 to 100, after watching the recycling video (treatment), or after browsing the internet (control). 
+
+We will specify that the potential outcome after browsing the internet is simply equal to the latent variable called `attitude_toward_recycling`. We expect the potential outcome after watching the video to be higher. Let's say that we think attitudes will be 5 points higher (on a sale of 1 to 100) in the treatment group. We reflect these expectations in our specification for the potential outcomes:
+
+```{r}
+potential_outcomes <-
+  declare_potential_outcomes(Y_Z_0 = attitude_toward_recycling,
+                             Y_Z_1 = pmin(100, attitude_toward_recycling + 5))
+```
+
+In the DeclareDesign package, the treatment variable is, by default, called `Z`. You can change the name of this variable, but for this tutorial, we will stick with `Z` as the variable indicating assignment to the control group (`Z == 0`) or treatment group (`Z == 1`). Also, notice that we've again restricted the maximum value of the attitude rating to be 100 using the `pmin` function.
+
+
+### Inquiry 
+
+Next, we define what we want to measure among the population. For example, we may want to calculate the average treatment effect (ATE) due to watching the recycling video. 
+
+```{r}
+ate <- declare_estimand(ATE = mean(Y_Z_1 - Y_Z_0))
+```
+
+We can define more than one thing to  estimate, but for now we'll stick with the ATE.
+
+### Data strategy
+
+We will now model the sampling strategy, and how we plan to assign students to the experimental conditions. First, let's say we plan to work with a representative, random sample of 100 students. In practice, such a sample is extremely difficult to obtain. But for this tutorial, just assume we can do it.
+
+```{r}
+exp_sample <- declare_sampling(n = 100)
+```
+
+Next, we will define how we plan to assign students into the treatment and control groups. Our plan is to block assignment by gender, such that within each block, half of the participants  are assigned to the two conditions. 
+
+```{r}
+assignment <- declare_assignment(blocks = female,         # blocking variable
+                                 block_prob = c(.5, .5))  # probability of
+                                                          #   assignment to 
+                                                          #   treatment for 
+                                                          #   each block
+```
+
+The final step in defining the data strategy is to simulate how the observed outcome `Y` is generated from the potential outcomes `Y_Z_0` and `Y_Z_1`. Since we are using `Y` and `Z` as the names of  our outcome and assignment variables, and these are the defaults for DeclareDesign, this step is trivial:
+
+```{r}
+outcomes <- declare_reveal()
+```
+
+At this point, we might be curious what the data for this experiment might look like. We can combine all of the objects created so far and pass them to a function called `draw_data`. Each time we do this, we will obtain a different, random data set.
+
+```{r}
+(population + potential_outcomes + ate +
+    exp_sample + assignment + outcomes) %>%
+  draw_data() %>%
+  as_tibble()
+```
+
+### Answer strategy
+
+The next step is to define how  we will evaluate the data from the experiment. Let's say that our plan is to estimate the ATE using linear regression of `Y` on `Z` and `female`, using the `lm` function. We define such an estimator in the following way:
+
+```{r}
+ate_estimator <- declare_estimator(Y ~ Z + female,
+                                   model = lm,
+                                   estimand = ate)
+```
+
+Note that the argument to `estimand` is the object `ate` that we defined earlier as the true average treatment effect. 
+
+## Putting it all together
+
+We have now described our planned experiment, including: the population of interest, our beliefs about the true treatment effect, what we plan to estimate, our sampling strategy and assignment procedures, and our planned analysis of the resulting data. We can combine all of these into a single object called `design`:
+
+```{r}
+design <- population + potential_outcomes + ate +
+  exp_sample + assignment + outcomes + ate_estimator
+```
+
+Now...what do we do with this? Well, as noted above, we can draw a random data set from this design:
+
+```{r}
+design %>%
+  draw_data() %>%
+  as_tibble()
+```
+
+But that's just a single random sample. The real value of the DeclareDesign package comes in its ability to simulate many possible experiments, and report back how well our strategy does in terms of measuring the causal effect we care about.
+
+```{r}
+diagnosis <- diagnose_design(design)
+```
+
+Now we can print out the results.
+
+```{r}
+diagnosis
+```
+
+The expected `Bias` is negligible (relative to its standard error), which means the estimate from linear regression is unbiased for the ATE. That's good news, because it means we can potentially estimate the treatment effect. 
+
+The expected `Power` for the experiment, however, is very low (just `r diagnosis$diagnosands_df$power`). This means that if the  treatment effect is truly about 5 points on a scale from 1 to 100, then we will have about a 1 in 10 chance of obtaining a p-value less than .05 for the average treatment effect. That is far too low, suggesting we need to either modify the  experiment, or decide not to run it at all.
+
+### A bigger sample?
+
+What if we were to double the sample size from 100 to 200? To answer that question,  we will  need to  modify the design, and then diagnose this new design.
+
+```{r}
+exp_sample_bigger <- declare_sampling(n = 200) # bigger sample
+design_with_bigger_sample <-
+  design %>%
+  replace_step(exp_sample, exp_sample_bigger)  # swap in the new sample size
+diagnosis_bigger_sample <-
+  diagnose_design(design_with_bigger_sample)   # diagnose
+diagnosis_bigger_sample
+```
+
+Power is now higher, but still too low. We would have about a 1 in 5 chance of detecting a 5 point increase on the 100-point attitude scale.
+
+### Within-subjects design?
+
+What  if we change the experiment to have a within-subjects design? First, we would measure `attitude_toward_recycling`, then, after the treatment (or control) is applied, we would measure it again. The outcome variable would then be the difference between the two attitude measurements.
+
+To simulate this design, we first need to redefine the potential outcomes accordingly. Moreover, it is unrealistic that students would provide exactly the attitude rating twice, so we will also simulate about 15 points of random difference in their responses in either direction (while using `pmin` and `pmax` to keep the simulated responses within the range of 1 to 100).
+
+```{r}
+potential_outcomes_within_student <- 
+  declare_potential_outcomes(
+    Y_Z_0 =
+      pmax(1,
+           pmin(
+             100,
+             attitude_toward_recycling +                  # second measure
+               sample(seq(-15, 15), N, replace = TRUE) -  #   including noise
+               attitude_toward_recycling                  # first measure
+           )), 
+  Y_Z_1 =
+    pmax(1,
+         pmin(
+           100,
+           attitude_toward_recycling +                    # second measure including
+             5 +                                          #   5 point treatment effect
+             sample(seq(-15, 15), N, replace = TRUE) -    #   and noise
+             attitude_toward_recycling                    # first measure
+         ))
+)
+```
+
+These potential  outcomes are similar to what we defined earlier, but here we have subtracted, within each student, their initial measure of `attitude_toward_recycling`. The modified design (using the original sample of 100) then becomes the following.
+
+```{r}
+design_within_student <-
+  design %>%
+  replace_step(potential_outcomes, potential_outcomes_within_student)
+diagnosis_within_student <-
+  diagnose_design(design_within_student)
+diagnosis_within_student
+```
+
+Power is now much higher (`r diagnosis_within_student$diagnosands_df$power`). If we go ahead with this experiment, we will probably want to switch to a within-individual design. 
+

@@ -1,0 +1,82 @@
+---
+title: "Install R packages"
+output: 
+  rmarkdown::html_document:
+    fig_width: 6
+    fig_height: 4
+    mathjax: null
+    theme: cerulean
+    highlight: pygments
+    self_contained: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+pre > code.sourceCode a {
+  display: none;
+}
+pre {
+  border-width: 0px;
+}
+code {
+  border-width: 0px;
+}
+</style>
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+Perform the following steps to ensure you have the tidyverse, DeclareDesign, coin, and ECICourse packages installed. When you are done, click on "Mark as done" in the top-right corner of this page.
+
+## Step 1
+
+Open RStudio
+
+## Step 2
+
+Ensure these packages are installed, and install them if not.  Copy and paste  the code below into the R  console:
+```{r message = FALSE, warning = FALSE}
+if (!require("tidyverse")) {
+  install.packages("tidyverse")
+  library("tidyverse")
+}
+if (!require("coin")) {
+  install.packages("coin")
+  library("coin")
+}
+if (!require("DeclareDesign")) {
+  install.packages("DeclareDesign")
+  library("DeclareDesign")
+}
+if (!require("dagitty")) {
+  install.packages("dagitty")
+  library("dagitty")
+}
+if (!require("Matching")) {
+  install.packages("Matching")
+  library("Matching")
+}
+```
+
+
+## Step 3
+
+Install the ECICourse package. Copy and paste  the code below into the R  console:
+
+```{r message = FALSE, warning = FALSE}
+if (!require("remotes")) {
+    install.packages("remotes")
+}
+if (!require("ECICourse")) {
+    remotes::install_github("jasonmtroos/ECICourse")
+    library("ECICourse")
+}
+```
+
+

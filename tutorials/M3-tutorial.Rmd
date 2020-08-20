@@ -1,0 +1,177 @@
+---
+title: "R Tutorial: Representing DAGs in R"
+output: 
+  rmarkdown::html_document:
+    fig_width: 6
+    fig_height: 4
+    mathjax: null
+    theme: cerulean
+    highlight: pygments
+    self_contained: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+pre > code.sourceCode a {
+  display: none;
+}
+pre {
+  border-width: 0px;
+}
+code {
+  border-width: 0px;
+}
+</style>
+
+
+```{r, include = FALSE}
+if (require(canvasapicore)) {
+  knitr::opts_knit$set(upload.fun = function(file) {
+    canvasapicore::load_token_and_domain()
+    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+    structure(resp$url, XML = resp)
+  })
+}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  fig.width = 3, fig.height = 3,
+  comment = "#>"
+)
+```
+
+
+Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the top-right corner of this page.
+
+Start by loading packages:
+
+```{r setup}
+library(ECICourse)
+library(tidyverse)
+```
+
+Also load the dagitty package:
+
+```{r}
+library(dagitty)
+```
+
+This  tutorial  provides a brief introduction to the dagitty package, which provides tools for representing, and to some extent, analyzing DAGs. There are two objectives: 1) to introduce you to the dagitty  syntax, and  2) to give you a way to quickly plot  a DAG in R. In later problem sets, you might need to describe a DAG using this syntax.
+
+## dagitty's syntax
+
+DAGs are represented  in the dagitty package using a special syntax. This syntax  is easy to learn by example, so we'll go through a few. First, let's create a DAG with two nodes, `D` and `Y`, assuming `D` is a cause of `Y`.
+
+```{r M3-dag-1}
+dag <- dagitty("dag { D -> Y }")
+plot(graphLayout(dag))
+```
+
+Next,  let's add in a confounding variable `X`, which has a causal  effect on both `D` and `Y`. Notice in this  next example, the specification  for the DAG is split over multiple lines inside a single character  string in R:
+
+```{r M3-dag-2}
+dag <- dagitty("
+  dag {
+    D -> Y
+    X -> D
+    X -> Y
+  }
+")
+plot(graphLayout(dag))
+```
+
+The DAG above is defined by specifying each arrow on its own line. But we can also specify a DAG by describing longer paths involving more than two variables:
+
+```{r M3-dag-3}
+dag <- dagitty("
+  dag {
+    D -> Y <- X
+    X -> D <- Z
+  }
+")
+plot(graphLayout(dag))
+```
+
+DAGs with bi-directed arrows can  also be described with  dagitty's  syntax. Below we will add a bi-directed arrow between `X` and `Y`:
+
+```{r M3-dag-4}
+dag <- dagitty("
+  dag {
+    D -> Y
+    X -> D
+    X <-> Y
+  }
+")
+plot(graphLayout(dag))
+```
+
+## Translating DAGs into dagitty's syntax
+
+Consider a causal analysis involving variables `D`, `Y`, `X`, `Z`, and `W`. We assume the following causal relationships:
+
+1. `D` has a direct effect on `Y`
+2. `Z` has a direct effect on `D`, but no effects on any other variables
+3. `X` has a direct effect on both `D` and `Y`
+4. `W` has a direct effect on both `X` and `Z`
+5. `D` and `Y` are both affected by an unobserved common cause
+
+If we  want to depict these relationships in a DAG, we can simply replace the words above with dagitty syntax:
+
+1. `D -> Y`
+2. `Z -> D`
+3. `Y <- X -> D`
+4. `X <- W -> D`
+5. `D <-> Y`
+
+And  then we can define a dagitty object and plot it:
+
+```{r M3-dag-5}
+dag <- dagitty("
+dag {
+  D -> Y
+  Z -> D
+  Y <- X -> D
+  X <- W -> D
+  D <-> Y
+}
+")
+plot(graphLayout(dag))
+```
+
+We can also start with a DAG and translate it into dagitty syntax by going through each variable and listing its connections to other variables. Say we are given the DAG below:
+
+```{r M3-dag-6, results='hide', echo = FALSE}
+dag <- dagitty("
+dag {
+  M <- W -> X -> Y <- M <- D
+}
+")
+plot(graphLayout(dag))
+```
+
+Start by listing each variable and all of its outbound arrows:
+
+1. `D -> M`
+2. `M -> Y`
+3. `W -> M` and `W -> X`
+4. `X -> Y`
+
+And then we translate this directly into dagitty's syntax:
+
+```{r M3-dag-7}
+dag <- dagitty("
+dag {
+  D -> M
+  M -> Y
+  W -> M
+  W -> X
+  X -> Y
+}
+")
+plot(graphLayout(dag))
+```
+
+
+The dagitty package does much more than this. We'll stop here though because the point was to get you familiar with the dagitty syntax, and show you how to quickly plot a DAG in R.
+
+

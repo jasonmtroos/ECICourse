@@ -1,0 +1,6 @@
+M2_experiment <- ECICourseTools::get_student_grades_exp()
+usethis::use_data(M2_experiment)
+P2_satisfaction <- ECICourseTools::get_customer_satisfaction_exp()
+usethis::use_data(P2_satisfaction)
+M6_coupon <- ECICourseTools::get_rfm_data()
+usethis::use_data(M6_coupon)

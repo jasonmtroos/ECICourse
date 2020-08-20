@@ -7,10 +7,17 @@ Authors@R:
            role = c("aut", "cre"),
            email = "my_first_initial_and_last_name@rsm.nl",
            comment = c(ORCID = "0000-0001-9764-5128"))
-Description: Provides data and maybe also some tools for my course Experimentation and Causal Inference.
+Description: Provides data and tools for my course Experimentation and Causal Inference.
 License: GPL-3
 Encoding: UTF-8
 Language: en-US
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.0
+Depends: 
+    R (>= 2.10)
+Suggests: 
+    testthat,
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
