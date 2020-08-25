@@ -1,0 +1,300 @@
+---
+title: "R Tutorial: Estimating the CACE (aka LATE)"
+output: 
+  rmarkdown::html_document:
+    fig_width: 6
+    fig_height: 4
+    mathjax: null
+    theme: cerulean
+    highlight: pygments
+    self_contained: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+pre > code.sourceCode a {
+  display: none;
+}
+pre {
+  border-width: 0px;
+}
+code {
+  border-width: 0px;
+}
+</style>
+
+
+```{r, include = FALSE}
+if (require(canvasapicore)) {
+  knitr::opts_knit$set(upload.fun = function(file) {
+    canvasapicore::load_token_and_domain()
+    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+    structure(resp$url, XML = resp)
+  })
+}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the top-right corner of this page.
+
+Start by loading packages:
+
+```{r setup, cache = FALSE}
+library(ECICourse)
+library(tidyverse)
+```
+
+## Data
+
+The data for this tutorial describe the outcome of a fictional experiment involving an incentive to join a customer loyalty program. A software company produces mobile apps using a "freemium" sales model: the base app is available for free, and add-ons sell for €.50 each. The company announced a customer loyalty program. Customers would be able to enroll in the loyalty program for free, and in return, they would gain access to early releases of new add-ons, as well as discounts on (as of yet unspecified) future products. Because the company sells its app via mobile app stores, it knows the following:
+
+* Who each customer is
+* Whether they have enrolled in the loyalty program
+* How much revenue each customer generates
+
+The company decided to incentivize some customers to join the loyalty program. Just prior to the launch of the loyalty program (i.e., before anybody could sign up), it randomly chose 15% of its customers and told then that if they enrolled in the loyalty program when it opened, they would be entered into a drawing to receive one of 10 Amazon gift cards worth €100 each.
+
+To obtain the data from this experiment, run the following code:
+
+```{r}
+loyalty <- get_ECI_data('module-8-tutorial')
+loyalty
+```
+
+The variables are:
+
+* `customer`: a unique identifier for each customer
+* `Z`: whether the customer  received the incentive to join the loyalty program
+* `D`: whether the customer joined the loyalty program
+* `Y`: revenue within the first 3 months after the launch of the loyalty program (for the sake of simplicity, assume that customers could only enroll when the program was first launched)
+
+The company wants to know a few things:
+
+* Was revenue higher among customers who received the incentive? (This is the intent-to-treat effect of the incentive on revenue, or ITT)
+* Were customers who received the incentive more likely to join the loyalty program? (This is the intent-to-treat effect of the incentive on joining the loyalty program, or ITTd)
+* How much did joining the loyalty program increase revenue among customers who were nudged into joining the loyalty program by the incentive? (This is the complier average causal effect, CACE, which is also called the local average treatment effect, LATE)
+* Was the incentive cost effective?
+
+The company believes or is willing to assume the following things:
+
+* Customers who stand to benefit the most from joining the program are more likely to join it. That is, the change in revenue from joining the loyalty program is probably correlated with the decision to join the loyalty program.
+* There are "always-takers"—some customers who received the incentive to join and subsequently joined the loyalty program would have joined even without the incentive.
+* There are "never-takers"—some customers who did not receive the incentive and did not join would not have joined even if they received the incentive.
+* There are "compliers"—some customers who received the incentive and joined the loyalty program would not have joined if they hadn't received the incentive.
+* There are no "refusers"—none of the customers who received the incentive became less likely to join as a result of receiving the incentive. (This is the monotonicity assumption in two-sided non-compliance problems.)
+* The usual assumptions about there being no spillovers between customers, etc.
+
+## Structure of the problem
+
+The following DAG shows why estimation of the causal effect of joining the loyalty program on revenue cannot be estimated through standard methods.
+
+```{r M8-loyalty-DAG, echo = FALSE}
+plot((dagitty::dagitty('dag {
+D [exposure,pos="-0.500,0.000"]
+Y [outcome,pos="1.500,0.000"]
+Z [pos="-1.500,1.000"]
+u [latent,pos="0.500,-1.000"]
+D -> Y
+Z -> D
+u -> D
+u -> Y
+}')))
+```
+
+The unobserved variable `u` affects both revenue (`Y`) and enrollment in the loyalty program (`D`). However, because the company is willing to assume that the incentive (`Z`) affects enrollment  but not revenue, receipt of the incentive can be used as an "instrumental variable" for enrollment. 
+
+We will estimate the effects of interest using three different methods to illustrate that these all yield the same estimated CACE/LATE.
+
+## Estimation
+
+First, we will estimate the intent-to-treat effects of the incentive on 1) revenue, and 2) enrollment. Let's start with ITT, the effect of the incentive on revenue:
+
+```{r}
+loyalty_ITT <-
+	loyalty %>%
+	group_by(Z) %>%
+	summarise(Y = mean(Y)) %>%
+	pivot_wider(names_from = Z, values_from = Y, names_prefix = 'Z_')
+loyalty_ITT
+```
+
+Transforming this result yields our estimate of the ITTd:
+
+```{r}
+ITT <- 
+	loyalty_ITT %>%
+	mutate(ITT = Z_1 - Z_0) %>%
+	getElement('ITT')
+ITT
+```
+
+Revenue in the first 3 months was €`r signif(ITT, 2)` higher among customers who received the incentive. 
+
+Next, we will calculate ITTd, the intent-to-treat effect of the incentive on the decision to join the program.
+
+```{r}
+loyalty_ITTd <-
+	loyalty %>%
+	group_by(Z) %>%
+	summarise(D = mean(D)) %>%
+	pivot_wider(names_from = Z, values_from = D, names_prefix = 'Z_')
+loyalty_ITTd
+```
+
+This yields the following estimate:
+
+```{r}
+ITTd <-
+	loyalty_ITTd %>%
+	mutate(ITTd = Z_1 - Z_0) %>%
+	getElement('ITTd')
+ITTd
+```
+
+Customers receiving the incentive were on average `r signif(ITTd*100, 2)`% more likely to join the loyalty program.
+
+By taking the ratio of these two estimates, ITT / ITTd, we can obtain an estimate of the CACE/LATE:
+
+```{r}
+ITT / ITTd
+```
+
+Among customers joined the loyalty program after receiving the incentive (but who would not join the program without the incentive), revenue was about €`r signif(ITT/ITTd, 2)` higher as a result of joining the loyalty program.
+
+## Was the incentive worth it?
+
+In exchange for €1000 (the cost of ten gift cards) the company was able to increase revenue among a subset of customers. What was the total increase in revenue? To answer that, we first need to estimate the number of customers who were motivated to join the program because of the incentive. That is, we need to know the proportion of compliers among  the company's customers.
+
+### How many compliers are there?
+
+The ITTd can serve as an estimate of the share of compliers (think of it as estimating the share of people who switched from `D == 0` to `D == 1` due to the incentive). Alternatively, we can estimate the share of never-takers, always-takers, and compliers directly. To do so, we first estimate the proportion of customers who did not join the program among those who did not receive the incentive. This group comprises both never-takers and compliers. (Stop and think through why that is the case.)
+
+```{r}
+nt_and_c <- sum(loyalty$Z == 0 & loyalty$D == 0) / sum(loyalty$Z == 0)
+nt_and_c
+```
+
+Second, we can estimate the proportion of customers who did join the program among those customers who did not receive the incentive. This group includes both always-takers and defiers---but since we assume there are no defiers, this proportion is simply the share of always-takers among the company's customers. This is simply `1 - nt_and_c`, but we can also calculate it directly:
+
+```{r}
+at <- sum(loyalty$Z == 0 & loyalty$D == 1) / sum(loyalty$Z == 0)
+at
+```
+
+Third, we can estimate the proportion of customers joined the program among those who received the incentive. This group includes always-takers and compliers. (Again, stop and think through why this is).
+
+```{r}
+at_and_c <- sum(loyalty$Z == 1 & loyalty$D == 1) / sum(loyalty$Z == 1)
+at_and_c
+```
+
+Fourth, we can estimate the proportion of customers who did not join the program among those who received the incentive. Again, because we assume there are no defiers, this group contains only never-takers:
+
+```{r}
+nt <- sum(loyalty$Z == 1 & loyalty$D == 0) / sum(loyalty$Z == 1)
+nt
+```
+
+We can then derive the share of compliers using either of the two methods below:
+
+```{r}
+at_and_c - at
+nt_and_c - nt
+```
+
+This estimate is also the ITTd, as mentioned above.
+
+```{r}
+ITTd
+```
+
+Compliers therefore make up about `r signif(100*at_and_c - at, 2)`% of the company's customers. Among the `r sum(loyalty$Z == 1)` who received the incentive, `r round(ITTd * sum(loyalty$Z == 1))` joined because of the incentive. 
+
+```{r}
+compliers_with_incentive <- ITTd * sum(loyalty$Z == 1)
+compliers_with_incentive
+```
+
+### Was the incentive profitable?
+
+Back to our original question of whether the increase in revenue from the incentive was worth its cost. Recall that the average change in revenue due to joining the loyalty program is given by our estimate of the CACE, which we estimated as the  ratio of `ITT/ITTd`:
+
+```{r}
+ITT/ITTd
+```
+
+Multiplying this average by the number of compliers who received the incentive yields an estimate of the total increase in revenue due to the incentive:
+
+```{r}
+compliers_with_incentive * ITT / ITTd
+```
+
+The company spent €1000 on the incentive, but in return, revenue increased by €2787. Ignoring all other costs, the incentive seems to have been profitable.
+
+
+A final point before moving on to regression: Notice that the estimate above was obtained by multiplying the number of compliers who received the incentive by the ITT and dividing that by the ITTd. You might recall that the first estimate was obtained by multiplying the number of treated customers by the ITTd. Because the ITTd's cancel out of the ratio, we can estimate the revenue from the incentive in the following way: 
+
+```{r}
+sum(loyalty$Z == 1) * ITT
+```
+
+This is the average intent-to-treat effect on revenue multiplied by the number of people who were treated. 
+
+
+
+## Estimating CACE/LATE via IV regression
+
+We can also estimate the CACE/LATE using instrumental variables (IV) regression. First we will carry out two-stage-least-squares (2SLS) regression manually, then we will use the `ivreg` function from the AER package to perform the regression with one call.
+
+The first step in 2SLS is to obtain predicted values of `D` for each customer. We can obtain these by regressing `D` on `Z`.
+
+```{r}
+reg_DZ <- lm(D ~ Z, data = loyalty)
+summary(reg_DZ)
+```
+
+(Notice that the coefficient for `Z` is equal to the ITTd.) To obtain a vector of predicted values of `D`, which we will call `D_hat`, we use the `predict` function:
+
+```{r}
+D_hat <- predict(reg_DZ)
+```
+
+Next, we will regress `Y` not on `D`, but rather on the values of `D_hat` we just obtained.
+
+```{r}
+loyalty_with_D_hat <-
+	loyalty %>%
+	mutate(D_hat = D_hat)
+reg_Y_D_hat <- lm(Y ~ D_hat, data = loyalty_with_D_hat)
+summary(reg_Y_D_hat)
+```
+
+The coefficient for `D_hat` is equal to our earlier estimate of the CACE/LATE obtained via the ratio of `ITT/ITTd`:
+
+```{r}
+ITT / ITTd
+```
+
+In practice, we would use the `ivreg` function from the AER package to perform IV regression. To specify the regression, we will use the `|` symbol when specifying the regression formula:
+
+
+```{r}
+library(AER)
+reg_Y_D_iv <- ivreg(Y ~ D | Z, data = loyalty)
+```
+
+The formula `Y ~ D | Z` means "regress `Y` on `D` after replacing `D` with estimates from a regression of `D` on `Z`." Or maybe more simply, "use `Z` as an instrument for `D` in a regression of `Y` on `D`."
+
+Finally, we can see that this also yields the same estimate for the CACE/LATE:
+
+```{r}
+summary(reg_Y_D_iv)
+ITT / ITTd
+```
+
+

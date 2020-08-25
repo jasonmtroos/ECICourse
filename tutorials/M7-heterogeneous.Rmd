@@ -1,0 +1,177 @@
+---
+title: "R Tutorial: Testing for heterogenous treatment effects"
+output: 
+  rmarkdown::html_document:
+    fig_width: 6
+    fig_height: 4
+    mathjax: null
+    theme: cerulean
+    highlight: pygments
+    self_contained: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+pre > code.sourceCode a {
+  display: none;
+}
+pre {
+  border-width: 0px;
+}
+code {
+  border-width: 0px;
+}
+</style>
+
+
+```{r, include = FALSE}
+if (require(canvasapicore)) {
+  knitr::opts_knit$set(upload.fun = function(file) {
+    canvasapicore::load_token_and_domain()
+    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+    structure(resp$url, XML = resp)
+  })
+}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the top-right corner of this page.
+
+Start by loading packages:
+
+```{r setup, cache = FALSE}
+library(ECICourse)
+library(tidyverse)
+```
+
+
+## Data
+
+The data for this tutorial describe a fictional experiment conducted by a carbonated beverage company. The company wanted to understand how offering retailers a \$.50 discount on six-packs of soda affected retail prices. To clarify: when retailers were given a \$.50 discount on the wholesale price, some, but not all, would drop the retail price in response to this incentive. 
+
+The company suspected that the size of the discount was heterogeneous across retailers. Specifically, the company thought that retailers in more affluent areas might be less likely to lower the price. Thus, the soda company collected data on average incomes in the area served by each retailer  (`income`), and used a block randomization scheme to assign the 3,782 retailers to treatment (`D == 1`) and control (`D == 0`) conditions. In the treatment condition, retailers received a $.50 discount on the wholesale price. In the control condition, no discount was offered.
+
+The company then obtained average retail prices (`avg_price`) for its soda for all retailers in the experiment (these data were purchased from a third party). The data describe average prices, because over the course of a week, different customers will end up paying a different price for the same item. The third party data were then linked back to the experimental data.
+
+To obtain the data, run the following code:
+
+```{r}
+soda_prices <- 
+	get_ECI_data('module-7-tutorial')
+```
+
+## Average treatment effect
+
+First, we will note that the experiment revealed that average prices were lower among retailers receiving the discount. 
+
+```{r}
+library(coin)
+independence_test(avg_price ~ D, data = soda_prices,
+									distribution = approximate())
+soda_prices %>%
+	group_by(D) %>%
+	summarise(mean(avg_price))
+```
+
+The soda company thinks the treatment effects might vary among retailers, so we will explore that possibility next.
+
+## Heterogeneous treatment effects
+
+Heterogeneity in treatment effects implies that the variance of the true (unobserved) treatment effect is greater than zero, and thus the variance of potential outcomes under treatment and control are unequal. We can visualize the variances of average prices under treatment and control to see if there is a visible difference:
+
+```{r M7-outcomes}
+ggplot(soda_prices,
+			 aes(x = avg_price,
+			 		y = factor(D, 
+			 							 levels = c(0, 1), 
+			 							 labels = c('Control', 'Treatment')))) +
+	geom_jitter() +
+	labs(y = NULL, x = 'Average price')
+```
+
+This plot shows two things. First, it shows that average prices are somewhat lower in the treatment condition (as we just confirmed). Second, it shows that prices are more spread out in the treatment condition. The latter suggests that treatment effects might have been heterogeneous.
+
+We can also calculate the variances directly:
+
+```{r}
+soda_prices %>%
+	group_by(D) %>%
+	summarise(var(avg_price))
+```
+
+The variance of prices is higher in the treatment group, but it is not clear whether this should be expected due to randomization. To find out, we can run a permutation test:
+
+```{r}
+t1 <- independence_test(avg_price ~ D, data = soda_prices, 
+												teststat = "quadratic", distribution = approximate())
+t1
+```
+
+The argument `teststat = "quadratic"` in the call above means we want to test for a difference in variances of `avg_price`. An equivalent result can be obtained by calculating the squared differences in `avg_price` from `mean(avg_price)` ourselves, and then performing a permutation test for a difference in the average value of these squared residuals:
+
+```{r}
+soda2 <- 
+	soda_prices %>%
+	group_by(D) %>%
+	mutate(e2 = (avg_price - mean(avg_price))^2)
+t2 <- independence_test(e2 ~ D, data = soda2, 
+												distribution = approximate())
+t2
+```
+
+The p-values obtained from the two tests are the same:
+
+```{r}
+pvalue(t1)
+pvalue(t2)
+```
+
+Based on this result, it seems unlikely that the discount offered is constant across retailers. 
+
+## Conditional average treatment effects
+
+The soda company suspected that the size of the discount would be related to the average income in the area served by the retailer. Because they collected data on incomes, we can calculate conditional average treatment effects (CATEs) for each subset of retailers:
+
+```{r}
+soda_prices %>%
+	group_by(income, D) %>%
+	summarise(avg_price = mean(avg_price)) %>%
+	pivot_wider(names_from = 'D', values_from = 'avg_price',
+							names_prefix = 'D_') %>%
+	mutate(CATE = D_1 - D_0)
+```
+
+From this, it appears that the size of the discount was greatest among retailers serving customers with the lowest incomes, and smallest among retailers serving customers with the highest incomes. 
+
+Are these CATEs heterogeneous across retailers within each income group? To find out, we can conduct a permutation test within each subset of retailers by income. To specify blocking by income for the permutation tests, we include the term `| income` in the formula:
+
+```{r}
+t3 <- 
+	independence_test(avg_price ~ D | income, data = soda_prices,
+									distribution = approximate(), teststat = "quadratic")
+t3
+pvalue(t3)
+```
+
+We can also compute the variances directly  to get a sense of how heterogeneity varies across income groups:
+
+
+```{r}
+soda_prices %>%
+	group_by(income, D) %>%
+	summarise(variance = var(avg_price)) %>%
+	ungroup() %>%
+	pivot_wider(names_from = 'D', values_from = 'variance',
+							names_prefix = 'variance_D_') %>%
+	mutate(difference_in_variance = variance_D_1 - variance_D_0)
+```
+
+Treatment effect heterogeneity is highest among retailers serving customers with the lowest incomes, and smallest among retailers serving customers with the highest incomes. 
+
+
+

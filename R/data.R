@@ -15,5 +15,13 @@ get_ECI_data <- function(name = NULL) {
 		utils::data('M6_coupon', package = 'ECICourse',  envir =  e)
 		assign('d', e$M6_coupon, envir = e)
 	}
+	if (name == 'module-7-tutorial') {
+		utils::data('M7_soda_prices', package = 'ECICourse', envir  = e)
+		assign('d', e$M7_soda_prices, envir = e)
+	}
+	if (name == 'module-8-tutorial') {
+		utils::data('M8_loyalty', package = 'ECICourse', envir = e)
+		assign('d', e$M8_loyalty, envir = e)
+	}
 	e$d
 }
