@@ -154,7 +154,7 @@ avg_order_sizes_by_group %>%
   select(-coupon_1, -coupon_0)   # removing columns to make it easier to read
 ```
 
-The estimated CATEs shown above vary widely across groups of customers. One way to think of classical matching is that it works by taking weighted averages of these CATEs in order to generate unbiased and consistent estimates for the average treatment effect (ATE), average treatment effect on the treated (ATT), and the average treatment effect on the controls (ATC). The weights in the weighted averages depend on the target effect to be estimated. 
+The estimated CATEs shown above vary widely across groups of customers. As we will see below, one way to think of classical matching is that it works by taking weighted averages of these CATEs in order to generate unbiased and consistent estimates for the average treatment effect (ATE), average treatment effect on the treated (ATT), and the average treatment effect on the controls (ATC). The weights in the weighted averages depend on the target effect to be estimated. 
 
 ## Estimating the ATT with classical matching
 

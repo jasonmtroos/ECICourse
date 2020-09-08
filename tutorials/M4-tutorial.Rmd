@@ -102,9 +102,9 @@ fieldexp %>%
   diff()
 ```
 
-*Note:* the `.groups = 'drop'` argument to `summarise` prevents the message `summarise() ungrouping output (override with .groups argument)`  from being printed.
+*Note:* the `.groups = 'drop'` argument in the call to `summarise` prevents the message `summarise() ungrouping output (override with .groups argument)`  from being printed.
 
-It will be  useful later to encapsulate this calculation into a function, so let's creat that now:
+It will be  useful later to encapsulate this calculation into a function, so let's create that now:
 
 ```{r}
 get_ATE <- function(df) {
@@ -128,7 +128,7 @@ sate <- round(ate, 3)
 
 ## Randomization inference
 
-Should we trust that the estimate of `r sate` reflects a real difference in grades,  or should we attribute it  to sampling variation? We  will use randomization inference to address this question.
+Should we trust that the estimate of `r sate` reflects a real difference in grades,  or could that estimate differ from zero simply because of sampling variation? We  will use randomization inference to address this question.
 
 We  start by noting that there are many ways the experiment could have  assigned the 360 students into two groups of 160 each. In  fact, there are 360! / (160! 160!) different ways to assign students  into these two groups.  That's a huge number.
 
@@ -142,10 +142,10 @@ The  idea behind randomization inference is this: We start  with a working  assu
 
 If these assumptions are correct, then our estimate of the ATE (`r sate`) differs from 0 simply as a result of the way students were assigned  to the treatment  and control groups. This leads to the question of how "typical" our estimate is, if it is simply due to chance. We cannot answer this question exactly, because the number of ways to randomize the students is  so large. But we can approximate it. 
 
-We'll build this approximation in  steps. Let's first consider a single, hypothetical assignment of students to treatment and control. This assignment differs from the one we obtained in the actual  experiment, but it was just as likely.
+We'll build this approximation in  steps. Let's first consider a single, hypothetical assignment of students to treatment and control. This assignment differs from the one we obtained in the actual  experiment, but it was equally likely to have been occurred.
 
 ```{r}
-set.seed(1)
+set.seed(1)             # so your results match mine
 new_D <- sample(rep(0:1, 160), 320, replace = FALSE)
 new_D
 sum(new_D == 1)
@@ -230,7 +230,7 @@ perm_test <-
 pvalue(perm_test)
 ```
 
-The result of this permutation test is shown above. Moreover, because the  permutation test uses  a random subset of all possible assignments to treatment and control, the p-value itself is subject to sampling variation. Hence the output above placed a confidence interval around the p-value.
+The result of this permutation test is shown above. Moreover, because the  permutation test uses  a random subset of all possible assignments to treatment and control, the p-value itself is subject to sampling variation. Hence the output above shows a confidence interval around the p-value.
 
 
 

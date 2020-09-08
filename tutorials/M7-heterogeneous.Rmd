@@ -135,7 +135,7 @@ Based on this result, it seems unlikely that the discount offered is constant ac
 
 ## Conditional average treatment effects
 
-The soda company suspected that the size of the discount would be related to the average income in the area served by the retailer. Because they collected data on incomes, we can calculate conditional average treatment effects (CATEs) for each subset of retailers:
+The soda company suspected that the size of the discount would be related to the average income in the area served by the retailer. Because they collected data on incomes, we can calculate conditional average treatment effects (CATEs) for each income level:
 
 ```{r}
 soda_prices %>%

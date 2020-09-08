@@ -59,18 +59,20 @@ In this tutorial, we will simulate experiments with both  complete and block ran
 
 ## The population, potential outcomes, and experimental sample
 
+To help fix ideas, imagine we will conduct an experiment involving a sample of employees from a large company. The experiment will assign some employees to receive special job training, and measure its impact on job performance. There are two variables that are expected to correlate with job performance. One is a binary variable, `W`, indicating whether the employee received a bonus in the previous year. The other is their level of formal education, `X`.
+
 First, we will create a population to work with and  define a random sample drawn from it. 
 
 ```{r}
 population <- 
   declare_population(
     N = 10000, 
-    W = draw_binary(prob = .5, N = N),
-    X = draw_ordered(x = rnorm(N, 1 + .5 * W, 2),
+    W = draw_binary(prob = .5, N = N),             # bonus
+    X = draw_ordered(x = rnorm(N, 1 + .5 * W, 2),  # formal education
                      breaks = c(0, 1, 1.5, 3.5)))
 ```
 
-`W` is a binary variable, and `X` is an ordered discrete variable. Values of `X` are higher when `W = 1` versus `W = 0`. (If it helps you to think of a concrete example of what these variables are, then think of `W` as gender and `X` as educational attainment; in the remainder  of the tutorial we will just call  them `W` and `X`.)
+`W` (bonus) is a binary variable, and `X` (education) is an ordered discrete variable. Values of `X` are higher among  employees with `W = 1` and lower among employees with `W = 0`.
 
 ```{r M5-pop-XW}
 ggplot(population(), aes(x = X, fill = factor(W))) +
@@ -78,7 +80,8 @@ ggplot(population(), aes(x = X, fill = factor(W))) +
   labs(fill = 'W')
 ```
 
-The experiment will measure an outcome variable `Y`. The potential outcomes differ between treatment `Z = 1` and control `Z = 0` by a constant amount.  Moreover, the potential outcomes are correlated with `W` and `X`.
+The experiment will measure an outcome variable `Y` (job performance). The potential outcomes differ between treatment `Z = 1` (special job training) and control `Z = 0` (no training) by a constant amount. Moreover, the potential outcomes are correlated with `W` and `X`.
+
 
 ```{r}
 potential_outcomes <-
@@ -98,7 +101,7 @@ The value of `Y_Z_0` (i.e., the potential outcome Y(0)) is a random normal varia
   labs(y = 'Y(0)', x = 'X', colour = 'W')
 ```
 
-The experiment will attempt to measure  the  ATE, which in these simulations, is equal to 5.
+The experiment will attempt to measure  the  ATE, which in these simulations, is equal to 5. This is the increase in job performance after receiving the training.
 
 ```{r}
 ate <- declare_estimand(ATE = mean(Y_Z_1 - Y_Z_0), label = 'ATE')
@@ -142,7 +145,7 @@ block_WX_assn <-
                      label = 'Block by W and X')
 ```
 
-These different randomization strategies lead to different numbers of individuals assigned to treatment and control in each of the subgroups defined by values of `W` and `X`. To illustrate, consider a simulated experiment based on the complete assignment approach. We can tabulate the number of individuals assigned to treatment or control (`Z`) at different levels of `X`:
+These different randomization strategies lead to different numbers of individuals assigned to treatment and control in each of the subgroups defined by values of `W` (bonus) and `X` (education). To illustrate, consider a simulated experiment based on the complete assignment approach. We can tabulate the number of individuals assigned to treatment or control (`Z`) at different levels of `X`:
 
 ```{r}
 (basic_design + complete_assn) %>%
@@ -210,7 +213,7 @@ lm(Y ~ Z, data = sim) %>%
   .['Z']
 ```
 
-As you can  see, the two methods produce the same estimated ATE.
+As you can  see, the two methods produce the same estimated ATE (the change in job performance due to the job training).
 
 The other estimators we will consider are based on linear regression *with* covariates. There are three such estimators we will work with, corresponding with the three block randomization strategies defined earlier. 
 
@@ -256,7 +259,7 @@ comparison_dim <-
 comparison_dim
 ```
 
-The `SD Estimate` column gives the standard deviation of the estimated ATEs for each of the four assignment strategies. Compared to complete randomization, blocking by `W` does not improve the estimate by much at all. Blocking by `X` lowers the standard error by a more substantial amount,  and blocking by `X` and `W` lowers it  even further. We can visualize the dispersion of the estimated ATEs across all simulations in order to see these differences more clearly:
+The `SD Estimate` column gives the standard deviation of the estimated ATEs for each of the four assignment strategies. Compared to complete randomization, blocking by `W` (bonus) does not improve the estimate by much at all. Blocking by `X` (education) lowers the standard error by a more substantial amount,  and blocking by `X` and `W` lowers it  even further. We can visualize the dispersion of the estimated ATEs across all simulations in order to see these differences more clearly:
 
 ```{r M5-dim-compare}
 comparison_dim$simulations_df %>%
@@ -303,7 +306,7 @@ comparison_complete$simulations_df %>%
 
 ## Comparing estimators under block assignment
 
-The motivation behind blocked assignment is to remove variation in `Y` that is  due to variation in the blocking variable. Once that variation is removed, the difference-in-means estimator should be as efficient as a regression estimator that controls for the blocking variable.  In other words, we can still use the regression estimator, but because the  coefficients for the  blocking variables will be very close to zero, there is no benefit over the difference-in-means  estimator. To illustrate,  compare the regression estimator (with covariates  `W` and `X`)  with the difference-in-means estimators, when both are  applied to an experiment that blocks on `W` and `X`.
+The motivation behind blocked assignment is to remove variation in `Y` (job performance) that is  due to variation in the blocking variable (e.g., bonus, education, or both). Once that variation is removed, the difference-in-means estimator should be as efficient as a regression estimator that controls for the blocking variable.  In other words, we can still use the regression estimator, but because the  coefficients for the  blocking variables will be very close to zero, there is no benefit over the difference-in-means  estimator. To illustrate,  compare the regression estimator (with covariates  `W` and `X`)  with the difference-in-means estimators, when both are  applied to an experiment that blocks on `W` and `X`.
 
 ```{r}
 block_WX_reg_WX <- basic_design + block_WX_assn + declare_reveal() + ate_reg_WX
@@ -328,7 +331,7 @@ comparison_block_WX$simulations_df %>%
        title = 'Estimates Under Blocked Assignment by W and X')
 ```
 
-However, even  if we block, a regression estimator that uses covariates that were not part of the  blocked assignment can still yield improvements. For example, if  we block by `W`,  the regression estimator that adjusts for `X` still shows improvement over the difference-in-means estimator:
+However, even  if we block, a regression estimator that uses covariates that were not part of the  blocked assignment can still yield improvements. For example, if  we block by `W` (bonus),  the regression estimator that adjusts for `X` (education) still shows improvement over the difference-in-means estimator:
 
 ```{r M5-block-W}
 # block_W_dim was defined above

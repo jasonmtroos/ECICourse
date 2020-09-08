@@ -213,7 +213,7 @@ This estimate is also the ITTd, as mentioned above.
 ITTd
 ```
 
-Compliers therefore make up about `r signif(100*at_and_c - at, 2)`% of the company's customers. Among the `r sum(loyalty$Z == 1)` who received the incentive, `r round(ITTd * sum(loyalty$Z == 1))` joined because of the incentive. 
+Compliers therefore make up about `r round(100*(at_and_c - at), 0)`% of the company's customers. Among the `r sum(loyalty$Z == 1)` who received the incentive, `r round(ITTd * sum(loyalty$Z == 1))` joined because of the incentive. 
 
 ```{r}
 compliers_with_incentive <- ITTd * sum(loyalty$Z == 1)
