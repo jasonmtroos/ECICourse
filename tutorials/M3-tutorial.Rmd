@@ -112,7 +112,7 @@ Consider a causal analysis involving variables `D`, `Y`, `X`, `Z`, and `W`. We a
 1. `D` has a direct effect on `Y`
 2. `Z` has a direct effect on `D`, but no effects on any other variables
 3. `X` has a direct effect on both `D` and `Y`
-4. `W` has a direct effect on both `X` and `Z`
+4. `W` has a direct effect on both `X` and `D`
 5. `D` and `Y` are both affected by an unobserved common cause
 
 If we  want to depict these relationships in a DAG, we can simply replace the words above with dagitty syntax:
