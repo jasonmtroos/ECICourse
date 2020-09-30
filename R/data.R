@@ -23,5 +23,14 @@ get_ECI_data <- function(name = NULL) {
 		utils::data('M8_loyalty', package = 'ECICourse', envir = e)
 		assign('d', e$M8_loyalty, envir = e)
 	}
+	if (name == 'final-observational') {
+		utils::data('final_obs', package = 'ECICourse', envir = e)
+		assign('d', e$final_obs, envir = e)
+	}
+		if (name == 'final-experimental') {
+		utils::data('final_exp', package = 'ECICourse', envir = e)
+		assign('d', e$final_exp, envir = e)
+	}
+
 	e$d
 }
