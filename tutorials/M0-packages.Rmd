@@ -32,7 +32,7 @@ knitr::opts_chunk$set(
 ```
 
 
-Perform the following steps to ensure you have the tidyverse, DeclareDesign, coin, and ECICourse packages installed. When you are done, click on "Mark as done" in the top-right corner of this page.
+Perform the following steps to ensure you have the necessary R packages for this course installed. When you are done, click on "Mark as done" in the top-right corner of this page.
 
 ## Step 1
 
@@ -40,7 +40,7 @@ Open RStudio
 
 ## Step 2
 
-Ensure these packages are installed, and install them if not.  Copy and paste  the code below into the R  console:
+Ensure these packages are installed, and install them if not.  Copy and paste the code below into the R console:
 ```{r message = FALSE, warning = FALSE}
 if (!require("tidyverse")) {
   install.packages("tidyverse")
@@ -89,6 +89,7 @@ if (!require("ECICourse")) {
 I will very likely need to update the ECICourse package during the course. Whenever that happens, I will create an announcement asking you to reinstall the package. To reinstall the package, you will need to run the following code:
 
 ```{r message = FALSE, warning = FALSE, eval = FALSE}
+unloadNamespace('ECICourse')
 remotes::install_github("jasonmtroos/ECICourse")
 ```
 
