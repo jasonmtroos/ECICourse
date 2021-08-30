@@ -1,4 +1,11 @@
+#' Access data sets used for tutorials and problem sets
+#'
+#' @param name The name of the data set
+#' @return An object, typically a data frame
+#' @examples
+#' satisfaction <- get_ECI_data('problem-set-2-satisfaction')
 #' @export
+#' 
 get_ECI_data <- function(name = NULL) {
 	name <- tolower(name)
 	
@@ -27,10 +34,13 @@ get_ECI_data <- function(name = NULL) {
 		utils::data('final_obs', package = 'ECICourse', envir = e)
 		assign('d', e$final_obs, envir = e)
 	}
-		if (name == 'final-experimental') {
+	if (name == 'final-experimental') {
 		utils::data('final_exp', package = 'ECICourse', envir = e)
 		assign('d', e$final_exp, envir = e)
 	}
-
-	e$d
+	if (!is.null(e$d)) {
+		return(e$d)
+	}
+	msg <- paste0("\n\n  There is no data set named '", name, "'.\n\n  This could because you have misspelled the name of the data set,\n  or it might be due to the ECICourse R package being\n  updated after you installed it.\n\n  To reinstall the ECICourse R package, run the following R code:\n\n    unloadNamespace('ECICourse')\n    remotes::install_github('jasonmtroos/ECICourse')\n\n")
+	stop(msg)
 }
