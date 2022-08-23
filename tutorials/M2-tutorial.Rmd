@@ -30,7 +30,8 @@ code {
 if (require(canvasapicore)) {
   knitr::opts_knit$set(upload.fun = function(file) {
     canvasapicore::load_token_and_domain()
-    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
+    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
     structure(resp$url, XML = resp)
   })
 }
@@ -50,9 +51,9 @@ library(ECICourse)
 library(tidyverse)
 ```
 
-The  data for this tutorial describe a fictional field  experiment  conducted by an educational software company in cooperation with a local university. Students in the same degree program were randomized into two  conditions before entering  a required, core course. In the  treatment condition, students received access to the educational software. In the control condition, students did not  gain access to the software.
+The  data for this tutorial describe a fictional field  experiment  conducted by an educational software company in cooperation with a local university. Students (all in the same degree program) were randomized into two  conditions before enrolling in  a required, core course. In the  treatment condition, students received access to the educational software. In the control condition, students did not  gain access to the software.
 
-In this tutorial, you will go  through the steps needed to calculate the  average treatment  effect (ATE) of having access  to the educational software. 
+In this tutorial, you will go  through the steps needed to calculate the  average treatment  effect (ATE) of having access  to the educational software on students' grades in the course. 
 
 ## Obtain the data
 
@@ -77,7 +78,7 @@ fieldexp %>%
   count(D)
 ```
 
-Look at the distribution of grades in the  two conditions:
+Next, look at the distribution of grades in the  two conditions:
 
 ```{r M2-dist-DY}
 ggplot(fieldexp, aes(x = factor(D), y = Y)) +
@@ -85,9 +86,11 @@ ggplot(fieldexp, aes(x = factor(D), y = Y)) +
   labs(x = 'D')
 ```
 
+There are no obvious problems with the data—most of the grades are 6 or higher, there are very few 10's, etc. In other words, nothing stands out as problematic. So let's continue...
+
 ## Average grades in the treatment and control conditions
 
-What were the average  grades among students who had access to the software (the treatment group,  or those with `D == 1`). Conceptually, this is just the average value of `Y` among students who had `D == 1`, or the mean  of `Y` conditional on `D == 1`. 
+What was the average  grade among students who had access to the software (the treatment group,  those with `D == 1`)? To answer this, we need to calculate the average value of `Y` among students who had `D == 1`, or in other words, the mean  of `Y`, conditional on `D == 1`. 
 
 
 To calculate the average outcome (grade) among students who received access to the software (students with `D == 1`), we first filter the data frame, keeping only rows with `D == 1`, and then we calculate `mean(Y)`:
@@ -98,7 +101,7 @@ fieldexp %>%
   summarise(Y = mean(Y))
 ```
 
-To calculate  the average   grade among students who did not receive the  software (the  control group, those with `D == 0`),  we follow a similar procedure:
+Next, to calculate  the average   grade among students who did not receive the  software (the  control group, those with `D == 0`),  we follow an analogous procedure:
 
 ```{r}
 fieldexp %>%
@@ -106,7 +109,7 @@ fieldexp %>%
   summarise(Y = mean(Y))
 ```
 
-We can use `group_by` to calculate both of these averages at the same time. In the code below, we  summarize the mean of `Y` separately for each of the two groups defined by the two values of `D`.  We will also  use `mutate` to assign descriptive labels to the values in `D`  (renaming `D == 0` to `'Control'` and `D == 1` to `'Treatment'`).
+Alternatively, we can use `group_by` to calculate both of these averages at the same time. In the code below, we  summarize the mean of `Y` separately for each of the two groups defined by the two values of `D`.  We will also  use `mutate` to assign descriptive labels to the values in `D`  (renaming `D == 0` to `'Control'` and `D == 1` to `'Treatment'`).
 
 ```{r}
 fieldexp %>%
@@ -129,7 +132,7 @@ fieldexp %>%
 
 ## Average  treatment effect
 
-The average treatment effect (ATE) is 𝔼[Y(1) -  Y(0)], or equivalently, 𝔼[Y(1)] - 𝔼[Y(0)]. We don't observe the potential outcomes Y(1) and Y(0), so we assume that the conditional averages of `Y` when  `D == 1`  and `D == 0` (calculated above) are reasonable  estimators for 𝔼[Y(1)] and 𝔼[Y(0)]. This assumption allows us to estimate of the average treatment effect by simply taking the difference between the average values of `Y` when `D` is either  1 or 0. 
+The average treatment effect (ATE) is 𝔼[Y(1) -  Y(0)], or equivalently, 𝔼[Y(1)] - 𝔼[Y(0)]. We don't observe the potential outcomes Y(1) and Y(0). Thus, to estimate the ATE, we work under the assumption that the conditional averages of `Y` given  `D == 1`  and `Y` given `D == 0` (which we just calculated above) are consistent  estimators of 𝔼[Y(1)] and 𝔼[Y(0)] respectively. This assumption (which is reasonable since we randomized students into treatment and control) allows us to estimate of the average treatment effect by taking the difference between the average values of `Y` when `D` is either  1 or 0. 
 
 ```{r}
 fieldexp %>%
@@ -143,4 +146,12 @@ fieldexp %>%
 
 The average treatment effect is the value in the column labeled `ATE`. Therefore, the ATE for  this experiment is `r round(lm(Y ~ D,  data = fieldexp)$coef[2], 3)`. This is the expected  difference  in students' grades caused by having access to the educational software.
 
+An alternative way to calculate the treatment effect is to perform a linear regression of `Y` on `D`:
+
+```{r}
+fit <- lm(Y ~ D, data = fieldexp)
+coef(fit)
+```
+
+In this regression, the coefficient for `D` (`r coef(fit)['D']`) is equal to the ATE, the intercept is equal to the average value of `Y` when `D == 0` (`r coef(fit)['(Intercept)']`), and the sum of the intercept and the coefficient for `D` is equal to the average value of `Y` when `D == 1` (`r sum(coef(fit))`).
 

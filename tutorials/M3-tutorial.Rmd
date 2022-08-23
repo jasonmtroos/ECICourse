@@ -22,6 +22,15 @@ pre {
 code {
   border-width: 0px;
 }
+blockquote > p {
+  font-size: 13px !important;
+  color: #647980;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+blockquote > code {
+   rgba(0, 0, 0, 0.02);
+}
 </style>
 
 
@@ -29,7 +38,8 @@ code {
 if (require(canvasapicore)) {
   knitr::opts_knit$set(upload.fun = function(file) {
     canvasapicore::load_token_and_domain()
-    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
+    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
     structure(resp$url, XML = resp)
   })
 }
@@ -56,7 +66,7 @@ Also load the dagitty package:
 library(dagitty)
 ```
 
-This  tutorial  provides a brief introduction to the dagitty package, which provides tools for representing, and to some extent, analyzing DAGs. There are two objectives: 1) to introduce you to the dagitty  syntax, and  2) to give you a way to quickly plot  a DAG in R. In later problem sets, you might need to describe a DAG using this syntax.
+This  tutorial  provides a brief introduction to the dagitty package, which provides tools for representing, and to some extent, analyzing DAGs. There are two objectives: 1) to introduce you to the dagitty  syntax for representing DAGs, and  2) to give you a way to quickly plot a DAG in R.
 
 ## dagitty's syntax
 
@@ -80,6 +90,10 @@ dag <- dagitty("
 plot(graphLayout(dag))
 ```
 
+
+> **Note:** The `graphLayout` function uses random numbers to determine where nodes should appear in the plot. Unfortunately, even if you call `set.seed` before `graphLayout`, you will always get a different result. Thus, your graphs will probably not look like mine, and you might need to re-run your code a few times to get a layout that looks good.
+
+
 The DAG above is defined by specifying each arrow on its own line. But we can also specify a DAG by describing longer paths involving more than two variables:
 
 ```{r M3-dag-3}
@@ -92,7 +106,7 @@ dag <- dagitty("
 plot(graphLayout(dag))
 ```
 
-DAGs with bi-directed arrows can  also be described with  dagitty's  syntax. Below we will add a bi-directed arrow between `X` and `Y`:
+DAGs with bi-directed arrows can  also be described with dagitty's syntax. Below we will add a bi-directed arrow between `X` and `Y`:
 
 ```{r M3-dag-4}
 dag <- dagitty("
@@ -139,6 +153,11 @@ plot(graphLayout(dag))
 ```
 
 We can also start with a DAG and translate it into dagitty syntax by going through each variable and listing its connections to other variables. Say we are given the DAG below:
+
+```{r echo = FALSE, include = FALSE}
+set.seed(10)
+```
+
 
 ```{r M3-dag-6, results='hide', echo = FALSE}
 dag <- dagitty("

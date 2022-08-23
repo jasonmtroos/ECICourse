@@ -1,0 +1,320 @@
+---
+title: "R Tutorial: Using simulation to design experiments"
+output: 
+  rmarkdown::html_document:
+    fig_width: 6
+    fig_height: 4
+    mathjax: null
+    theme: cerulean
+    highlight: pygments
+    self_contained: false
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+pre > code.sourceCode a {
+  display: none;
+}
+pre {
+  border-width: 0px;
+}
+code {
+  border-width: 0px;
+}
+</style>
+
+
+```{r, include = FALSE}
+# if (require(canvasapicore)) {
+#   knitr::opts_knit$set(upload.fun = function(file) {
+#     canvasapicore::load_token_and_domain()
+#   	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
+#     resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
+#     structure(resp$url, XML = resp)
+#   })
+# }
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the top-right corner of this page.
+
+Start by loading packages:
+
+```{r setup}
+library(ECICourse)
+library(tidyverse)
+```
+
+Also load the DeclareDesign package:
+
+```{r}
+library(DeclareDesign)
+```
+
+
+This tutorial introduces the DeclareDesign package. This package (really a family of packages including randomizr, fabricatr, and estimatr) provides a standardized interface for defining and evaluating the properties of an experimental design. 
+
+The package has a  web site with a lot of introductory materials ([link](https://declaredesign.org/getting-started.html)). It is extremely  flexible and powerful. It is also somewhat abstract, and for that reason it can be a bit confusing in places. The goal of this tutorial therefore is to help you get acquainted with the most basic features of the package, using a running example based a simple experiment with blocked assignment.
+
+A note about the package: The syntax for the package was recently been overhauled, and I have updated the tutorial to reflect this. If anything is confusing, there's a good chance it's due to this change, so please let me (Jason) know if you encounter anything strange.
+
+## Model-Inquiry-Data strategy-Answer strategy
+
+The DeclareDesign package is based on a philosophy that splits an experimental study into four parts. I will explain  these  briefly here.  (For more information, you might want to look at the authors' article describing the MIDA approach [Blair et al., linked under Module 4 Reading].)
+
+Imagine we are considering an experiment among a population of 250 students, all of whom are enrolled in the same MSc program. Gender will play a role in the study, and we know that 62% of students in this program identify as female. The experiment will sample from this population, and assign students to either a treatment or control condition. We want to know how much the treatment changes attitudes (the outcome variable).
+
+###  Model
+
+The first step in using DeclareDesign is to model the population of interest. Ideally, our model of the population will be a good description of the population we are trying to study. In practice, it may be a rather stylized depiction.
+
+```{r}
+population <- declare_population(
+  N = 250,                        # number of students
+  female =                        # 0 - not female; 1 - female
+    complete_rs(N, prob = .62),   # proportion of female students = .62
+  attitude_toward_recycling =
+    pmin(100,                     # max rating is 100
+         10 * (female == 1)  +    # higher among female students
+           sample(
+             x = seq_len(100),    # ratings between 1 and 100
+             size = N,
+             replace = TRUE
+          ))
+)
+```
+
+This code defines an object called `population`. There are `N = 250` people in this population, of which 62% have `female == 1`. There is also a latent variable  called `attitude_toward_recycling` drawn as a uniform random variable between 1 and 100, which represents an unmeasured, prior attitude towards recycling. Based on a prior survey, we believe that attitudes towards recycling are about 10 points higher among female students, on average, so we include that in the model as well. (The `pmin` function limits the maximum value of the attitude measure to be 100.)
+
+The resulting object, called `population`, can be called like a function. If we do so, it will generate a random population based  on our specification. We can use this to check that attitudes towards recycling are in fact higher among female students, and that none of the attitude measures are greater than 100:
+
+```{r}
+population() %>%
+  group_by(female) %>%
+  summarise(across(attitude_toward_recycling, list(mean = mean, max = max)))
+```
+
+The  next step in using DeclareDesign is to define the potential outcomes under treatment and control. In this experiment, the treatment group will watch a 10 minute video about recycling, whereas the control group will browse the internet for 10 minutes. The potential outcomes represent the students' attitudes towards recycling, measured on a scale of 1 to 100, after watching the recycling video (treatment), or after browsing the internet (control). 
+
+We will specify that the potential outcome after browsing the internet is simply equal to the latent variable called `attitude_toward_recycling`. We expect the potential outcome after watching the video to be higher. Let's say that we think that in the treatment group, attitudes will be 5 points higher on this scale (with a maximum of 100). We reflect these expectations in our specification for the potential outcomes:
+
+```{r}
+potential_outcomes <-
+  declare_potential_outcomes(Y_Z_0 = attitude_toward_recycling,
+                             Y_Z_1 = pmin(100, attitude_toward_recycling + 5))
+```
+
+In the DeclareDesign package, the treatment variable is, by default, called `Z`. You can change the name of this variable, but for this tutorial, we will stick with `Z` as the variable indicating assignment to the control group (`Z == 0`) or treatment group (`Z == 1`). Also, notice that we've again restricted the maximum value of the attitude rating to be 100 using the `pmin` function in the code above.
+
+
+### Inquiry 
+
+Next, we define what we want to measure about this population. For example, we may want to calculate the average treatment effect (ATE) due to watching the recycling video (versus browsing the internet). 
+
+```{r}
+ate <- declare_inquiry(ATE = mean(Y_Z_1 - Y_Z_0))
+```
+
+It is possible to define other things to estimate, such as the ATT or ATC, but for this tutorial we'll go with the ATE. In the code above, we are naming this estimand---the thing we want to estimate---`ATE`. We will use that name to refer back to this estimand later in the tutorial.
+
+### Data strategy
+
+We will now model the sampling strategy, and how we plan to assign students to the experimental conditions. First, let's say we plan to work with a complete random sample of 100 students. In practice, such a sample is extremely difficult to obtain. But for this tutorial, just assume we can do it.
+
+```{r}
+exp_sample <- declare_sampling(S = complete_rs(N, n = 100))
+```
+
+In the code above, `complete_rs` is a function that performs complete randomization, `n` is the size of the sample, and `S` is the name of a variable that will indicate whether an individual from the population is included in the sample.
+
+Next, we will define how we plan to assign students into the treatment and control groups. Our plan is to block assignment by the variable `female`, such that within each block (`female == 0` or `female == 1`), half of the participants are randomly assigned to treatment, and half are assigned to control. 
+
+```{r}
+assignment <- 
+  declare_assignment(
+    Z = conduct_ra(blocks = female,          # blocking variable
+                   block_prob = c(.5, .5)) ) # probability of assignment to 
+                                             #   treatment for each block
+```
+
+In the code above, the `conduct_ra` function handles random assignment to conditions, the `blocks` argument specifies which variable defines the blocks, and `block_prob` provides the probability of assignment to treatment in each of the two blocks (in both blocks, the probability of assignment to treatment is .5); as noted earlier, `Z` is the name of the variable indicating treatment status.
+
+The final step in defining the data strategy is to simulate how the observed outcome `Y` is generated from the potential outcomes `Y_Z_0` and `Y_Z_1`. Since we are using `Y` and `Z` as the names of the outcome and assignment variables, we specify this in the following way:
+
+```{r}
+outcomes <- declare_measurement(Y = reveal_outcomes(Y ~ Z))
+```
+
+At this point, we might be curious what the data for this experiment might look like. We can combine all of the objects created so far and pass them to a function called `draw_data`. Each time we do this, we will obtain a different, random data set.
+
+```{r}
+(population + potential_outcomes + ate +
+    exp_sample + assignment + outcomes) %>%
+  draw_data() %>%
+  as_tibble()
+```
+
+The columns in the data frame are:
+
+* `ID` An identifier for each person on the population. Since the population has 250 people, the maximum value of `ID` is 250, but because we have a random sample of 100, some values if `ID` are missing.
+* `female` and `attitude_toward_recycling` are the background variables we constructed to describe individuals in this population based on our prior knowledge of the population.
+* `Y_Z_0` and `Y_Z_1` are the (true, but in reality unobserved) potential outcomes under treatment and control.
+* `S` indicates if the individual was sampled. This data frame excludes anybody who was not sampled, so `S == 1` for all rows.
+* `Z` is the treatment assignment variable.
+* `Y` is the observed outcome, equal to `Y_Z_1` if `Z == 1` and `Y_Z_0` if `Z == 0`.
+
+
+### Answer strategy
+
+The next step is to define how  we will evaluate the data from the experiment. Let's say that our plan is to estimate the ATE using linear regression of `Y` on `Z` and `female`, using the `lm` function. We define such an estimator in the following way:
+
+```{r}
+ate_estimator <- declare_estimator(Y ~ Z + female,
+                                   .method = estimatr::lm_robust,
+                                   inquiry = "ATE")
+```
+
+Note that the argument to `inquiry` is the name "ATE" which we used earlier when defining the true average treatment effect. 
+
+## Putting it all together
+
+We have now described our planned experiment, including: the population of interest, our beliefs about the true treatment effect, what we plan to estimate, our sampling strategy and assignment procedures, and our planned analysis of the resulting data. We can combine all of these into a single object called `design`:
+
+```{r}
+design <- population + potential_outcomes + ate +
+  exp_sample + assignment + outcomes + ate_estimator
+```
+
+Now...what do we do with this? Well, as noted above, we can draw a random data set from this design:
+
+```{r}
+design %>%
+  draw_data() %>%
+  as_tibble()
+```
+
+But that's just a single random sample. The real value of the DeclareDesign package comes in its ability to simulate the entire experiment and analysis. For example, if we "print" the value of the object called `design`, it will perform all of these steps, and report the results of any estimators we have defined:
+
+```{r}
+design
+```
+
+But that's just a single simulation. What we would like to do is repeatedly simulate the experiment many times and report on how well our strategy does in terms of measuring the causal effect(s) we care about.
+
+```{r}
+diagnosis <- diagnose_design(design)
+```
+
+The `diagnose_design` function simulates the full experiment---everything from creating the population and drawing a random sample of 100 students, through random assignment and estimation of the average treatment effect---500 times. It then compares the true treatment effect (the true ATE) to the value it estimates via regression (the coefficient for `Z` in the linear regression `Y ~ Z + female`). Now we can print out a summary of the results.
+
+```{r}
+diagnosis
+```
+
+The estimated `Bias` for the experiment is the estimated difference between the "true" (simulated) ATE and the estimated (with `lm`) ATE. In this experiment, the bias is negligible relative to its standard error, meaning we do not find evidence suggesting the estimate from linear regression is biased for the ATE. That's good news, because it means we can potentially estimate the treatment effect. 
+
+The expected `Power` for the experiment, however, is very low (just `r round(diagnosis$diagnosands_df$power, 2)`). This means that if everything in the real-world experiment is exactly as we have coded it---if the treatment effect is truly about 5 points on a scale from 1 to 100, if we sample 100 people from a population of 250, etc.---then the probability of obtaining a p-value less than .05 and rejecting the null of zero effect should be about about `r round(diagnosis$diagnosands_df$power, 2)`. Stated differently, even if the treatment effect is truly non-zero, the chance of detecting this effect with this version of the experiment is only `r round(diagnosis$diagnosands_df$power, 2)`. For this experiment, I think that is too low, so we need to modify the experiment or cancel it. Running it as currently planned wouldn't be worth the cost.
+
+### A bigger sample?
+
+What if we were to double the sample size from 100 to 200? To answer that question,  we will  need to  modify the design, and then diagnose this new design.
+
+```{r}
+exp_sample_bigger <- 
+  declare_sampling(S = complete_rs(N, n = 200)) # bigger sample
+design_with_bigger_sample <-
+  design %>%
+  replace_step(exp_sample, exp_sample_bigger)   # swap in the new sample size
+diagnosis_bigger_sample <-
+  diagnose_design(design_with_bigger_sample)    # diagnose
+diagnosis_bigger_sample
+```
+
+The estimated `Power` is now higher (`r round(diagnosis_bigger_sample$diagnosands_df$power, 2)` versus `r round(diagnosis$diagnosands_df$power, 2)`), but still unacceptably low: With this version of the experiment, we would only have about a 1 in 5 chance of detecting a 5 point increase on the 100-point attitude scale.
+
+### Within-subjects design?
+
+What if we change the experiment to have a within-subjects design? First, we would measure `attitude_toward_recycling`. Then, after the treatment (or control) is applied, we would measure these attitudes a second time. The outcome variable would then be the *difference* between the two attitude measurements.
+
+To simulate this design, we first need to redefine the potential outcomes to match this modified experiment. Moreover, it is unrealistic that students would provide exactly the same attitude rating twice, so we will also simulate ±15 points of random noise, and add this to each student's second response (while using `pmin` and `pmax` to keep the simulated responses within the range of 1 to 100, which I'm now doing with a function I wrote called `clamp`).
+
+```{r}
+# a function to limit values between 1 and 100
+clamp <- function(x, min = 1, max = 100) {
+  pmax(1, pmin(100, x))
+}
+potential_outcomes_within_student <- 
+  declare_potential_outcomes(
+    Y_Z_0 = clamp(attitude_toward_recycling              # initial rating
+              + sample(seq(-15, 15), N, replace = TRUE)) # noise
+            - attitude_toward_recycling,                       
+    Y_Z_1 = clamp(attitude_toward_recycling              # initial rating
+              + 5                                        # treatment effect
+              + sample(seq(-15, 15), N, replace = TRUE)) # noise
+            - attitude_toward_recycling)
+```
+
+These potential  outcomes are different from what we defined earlier. Now, `Y` is the difference in two ratings: 
+
+* The first rating is just `attitude_toward_recycling`, which we defined previously. 
+* The second rating is equal to the first rating, plus random noise (anywhere from -15 to 15 points difference), plus 5 points (for `Y_Z_1`). The resulting amount must be between 1 and 100, so it is passed through the `clamp` function. 
+
+The outcome measure `Y` is the value of the second rating minus the first. The modified design (using the original sample of 100) now becomes:
+
+```{r}
+design_within_student <-
+  design %>%
+  replace_step(potential_outcomes, potential_outcomes_within_student)
+diagnosis_within_student <-
+  diagnose_design(design_within_student)
+diagnosis_within_student
+```
+
+Notice that power is much higher (`r round(diagnosis_within_student$diagnosands_df$power, 2)`) with this design. If we choose to run this experiment, we will probably want to run this version, based on the difference of two measurements for each individual. 
+
+## A simpler example
+
+Just so you can see everything in one place, consider the following experiment:
+
+* Population: 10,000 customers
+* Sample: A random sample of 500 customers
+```{r}
+pop <- declare_population(N = 10000)
+smp <- declare_sampling(S = complete_rs(N, n = 500))
+```
+
+* Treatment (50%): We send the customer a hand-written note saying how much we love them
+* Control (50%): No hand-written note
+```{r}
+asn <- declare_assignment(Z = complete_ra(N = N, prob = .5))
+```
+
+* Outcome: Customer satisfaction, rated on a 5 point scale. From past experience with this scale, we have an idea of what the distribution of ratings will be in the control condition (see code for details). We think the note might improve satisfaction ratings by 1 point among 1/4 of our customers (unless the rating is already 5, in which case there cannot be an improvement).
+```{r}
+pos <- declare_potential_outcomes(
+  Y_Z_0 = draw_ordered(x = rnorm(N), breaks = c(-2, -1.5, -.5, 1)),
+  Y_Z_1 = pmin(Y_Z_0 + 1*(runif(N) < .25), 5))  # increase by 1 point 
+                                                # for 25% of customers
+out <- declare_measurement(Y = reveal_outcomes(Y ~ Z))
+```
+
+* Inquiry and estimator: Average treatment effect, estimated using a simple difference in means estimator
+```{r}
+ate <- declare_inquiry(ATE = mean(Y_Z_1 - Y_Z_0))
+est <- declare_estimator(Y ~ Z,
+                         .method = estimatr::difference_in_means,
+                         inquiry = 'ATE')
+```
+
+
+Here is the complete design:
+```{r}
+design <- pop + smp + pos + ate + asn + out + est
+diagnose_design(design)
+```
+

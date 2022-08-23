@@ -29,7 +29,8 @@ code {
 if (require(canvasapicore)) {
   knitr::opts_knit$set(upload.fun = function(file) {
     canvasapicore::load_token_and_domain()
-    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
+    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
     structure(resp$url, XML = resp)
   })
 }
@@ -56,13 +57,12 @@ The data for this tutorial describe a fictional experiment conducted by a carbon
 
 The company suspected that the size of the discount was heterogeneous across retailers. Specifically, the company thought that retailers in more affluent areas might be less likely to lower the price. Thus, the soda company collected data on average incomes in the area served by each retailer  (`income`), and used a block randomization scheme to assign the 3,782 retailers to treatment (`D == 1`) and control (`D == 0`) conditions. In the treatment condition, retailers received a $.50 discount on the wholesale price. In the control condition, no discount was offered.
 
-The company then obtained average retail prices (`avg_price`) for its soda for all retailers in the experiment (these data were purchased from a third party). The data describe average prices, because over the course of a week, different customers will end up paying a different price for the same item. The third party data were then linked back to the experimental data.
+The company then obtained average retail prices (`avg_price`) for its soda for all retailers in the experiment (these data were purchased from a third party). The data describe average prices, because over the course of a week, different customers may end up paying a different price for the same item (e.g., due to coupons, discount cards, etc.). The third party data were then linked back to the experimental data. The average retail price (`avg_price`) at each retailer is the outcome variable for the experiment. 
 
 To obtain the data, run the following code:
 
 ```{r}
-soda_prices <- 
-	get_ECI_data('module-7-tutorial')
+soda_prices <- get_ECI_data('module-5-tutorial')
 ```
 
 ## Average treatment effect
@@ -78,18 +78,20 @@ soda_prices %>%
 	summarise(mean(avg_price))
 ```
 
+The difference in average retail prices is rather substantial, with retail prices about about \$`r abs(round(coef(lm(avg_price ~ D, data = soda_prices))['D'], 2))` lower at stores given a \$.50 discount.
+
 The soda company thinks the treatment effects might vary among retailers, so we will explore that possibility next.
 
 ## Heterogeneous treatment effects
 
-Heterogeneity in treatment effects implies that the variance of the true (unobserved) treatment effect is greater than zero, and thus the variance of potential outcomes under treatment and control are unequal. We can visualize the variances of average prices under treatment and control to see if there is a visible difference:
+Heterogeneity in treatment effects implies that the variance of the true (unobserved) treatment effect is greater than zero, and thus the variance of potential outcomes under treatment and control are unequal: Var(Y(1)) ≠ Var(Y(0)). We can visualize the variances of prices under treatment and control to see if there is a visible difference:
 
 ```{r M7-outcomes}
 ggplot(soda_prices,
 			 aes(x = avg_price,
-			 		y = factor(D, 
-			 							 levels = c(0, 1), 
-			 							 labels = c('Control', 'Treatment')))) +
+			 		 y = factor(D, 
+			 							  levels = c(0, 1), 
+			 							  labels = c('Control', 'Treatment')))) +
 	geom_jitter() +
 	labs(y = NULL, x = 'Average price')
 ```
@@ -104,7 +106,7 @@ soda_prices %>%
 	summarise(var(avg_price))
 ```
 
-The variance of prices is higher in the treatment group, but it is not clear whether this should be expected due to randomization. To find out, we can run a permutation test:
+The variance of prices is higher in the treatment group, but it is not clear whether this is due to randomization and sampling error. To find out, we can run a permutation test:
 
 ```{r}
 t1 <- independence_test(avg_price ~ D, data = soda_prices, 
@@ -131,11 +133,11 @@ pvalue(t1)
 pvalue(t2)
 ```
 
-Based on this result, it seems unlikely that the discount offered is constant across retailers. 
+Based on this result, it seems unlikely that the treatment effect---the difference in retail price attributable to the wholesale discount---is constant across retailers.
 
 ## Conditional average treatment effects
 
-The soda company suspected that the size of the discount would be related to the average income in the area served by the retailer. Because they collected data on incomes, we can calculate conditional average treatment effects (CATEs) for each income level:
+The soda company suspected that the size of the discount might be related to the average income in the area served by the retailer. Because the company collected data on incomes, it is possible to calculate conditional average treatment effects (CATEs) for each income level (low, middle, high-middle, and high):
 
 ```{r}
 soda_prices %>%
@@ -146,9 +148,38 @@ soda_prices %>%
 	mutate(CATE = D_1 - D_0)
 ```
 
-From this, it appears that the size of the discount was greatest among retailers serving customers with the lowest incomes, and smallest among retailers serving customers with the highest incomes. 
+From this, it appears that the change in retail price was greatest among retailers who serve customers with the lowest incomes, and smallest among retailers who serve customers with the highest incomes. 
 
-Are these CATEs heterogeneous across retailers within each income group? To find out, we can conduct a permutation test within each subset of retailers by income. To specify blocking by income for the permutation tests, we include the term `| income` in the formula:
+An aside: We can also estimate these CATEs using linear regression:
+
+```{r}
+fit <- lm(avg_price ~ income * D, data = soda_prices)
+summary(fit)
+```
+
+But notice that in the regression above, the coefficients named for the middle, high-middle, and high income do not match the CATEs we estimated above, and that there is no coefficient named after the low income group. The reason for this has to do with multicolinearity between the intercept and the discrete levels of income, and the way we specified the regression. In general, you need to be very careful when extracting treatment effects from a regression. We can recover the 4 CATEs using regression, but we need to combine some of the coefficient estimates:
+
+```{r}
+CATE_low <- coef(fit)['D']
+CATE_middle <- coef(fit)['D'] + coef(fit)['incomemiddle:D']
+CATE_highmiddle <- coef(fit)['D'] + coef(fit)['incomehigh-middle:D']
+CATE_high <- coef(fit)['D'] + coef(fit)['incomehigh:D']
+
+tibble(income = c('low', 'middle', 'high-middle', 'high'),
+			 CATE = c(CATE_low, CATE_middle, CATE_highmiddle, CATE_high))
+```
+
+It is possible to rewrite the regression formula so that the coefficients map directly to each of the 4 CATEs we are interested in:
+
+```{r}
+fit2 <- lm(avg_price ~ 0 + income + D:income, data = soda_prices)
+summary(fit2)
+```
+
+But it is my experience that people find it difficult to rewrite their regressions in this way.
+
+
+Back to the estimates. Are these CATEs also heterogeneous across retailers *within* each income group? To find out, we can conduct a permutation test within each subset of retailers (stratified by income). To specify blocking by income for the permutation tests, we include the term `| income` in the formula:
 
 ```{r}
 t3 <- 
@@ -158,7 +189,7 @@ t3
 pvalue(t3)
 ```
 
-We can also compute the variances directly  to get a sense of how heterogeneity varies across income groups:
+We can also compute the variances directly  to get a sense of how treatment effect heterogeneity varies across income groups:
 
 
 ```{r}
@@ -172,6 +203,5 @@ soda_prices %>%
 ```
 
 Treatment effect heterogeneity is highest among retailers serving customers with the lowest incomes, and smallest among retailers serving customers with the highest incomes. 
-
 
 

@@ -29,7 +29,8 @@ code {
 if (require(canvasapicore)) {
   knitr::opts_knit$set(upload.fun = function(file) {
     canvasapicore::load_token_and_domain()
-    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
+    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
     structure(resp$url, XML = resp)
   })
 }
@@ -49,9 +50,9 @@ library(ECICourse)
 library(tidyverse)
 ```
 
-The data for this tutorial describe the same fictional observational study as in the tutorial on classical matching.  Briefly, the study  was conducted by an  online seller of accessories for smart phones and tablet computers. The company  emailed a single-use coupon code to all `N = 20000` customers in its database. The coupons, which were valid on orders of €5 or more, could be used to receive a 30% discount on the customers' next order, as long as they were redeemed within a month.
+The data for this tutorial describe the same fictional observational study as in the tutorial on classical matching.  Briefly, the study  was conducted by an online seller of accessories for smart phones and tablet computers. The company emailed a single-use coupon code to all `N = 20000` customers in its database. The coupons, which were valid on orders of €5 or more, could be used to receive a 30% discount on the customers' next order, as long as they were redeemed within a month.
 
-The company wants to learn how much order sizes increased as a result of customers using the coupons. However, because the customers chose whether to use  the coupon or not, the company realizes that the naive estimator of the  average treatment effect will be biased and inconsistent. In this tutorial, we will use a weighted regression estimator to obtain unbiased and consistent estimates of treatment effects.
+The company wants to learn how much order sizes increased as a result of customers using the coupons. However, because the customers chose whether to use the coupon or not, the company realizes there is selection, so the naive estimator of the average treatment effect will be biased and inconsistent. In this tutorial, we will use a weighted regression estimator to obtain unbiased and consistent estimates of treatment effects.
 
 
 ## Data
@@ -63,11 +64,11 @@ coupon <- get_ECI_data('module-6-tutorial')
 coupon
 ```
 
-The data are described in more detail in the tutorial  on  classical matching. Briefly, 1) the treatment variable is `used_coupon`, indicating the coupon code was used; 2) the variables determining customers' propensities to use the coupon (i.e.,  select into treatment) are `recency`, `frequency`, and `monetary`; and 3) the  outcome variable is `order_size`, indicating the money spent on the order (ignoring the discount). If no order was placed, then `order_size == 0`, and we will assume that none of the customers placed more than one order  during the month of the promotion.
+The data are described in more detail in the tutorial on classical matching. Briefly, 1) the treatment variable is `used_coupon`, indicating the coupon code was used; 2) the variables determining customers' propensities to use the coupon (i.e.,  select into treatment) are `recency`, `frequency`, and `monetary`; and 3) the  outcome variable is `order_size`, indicating the money spent on the order (not including the discount). If no order was placed, then `order_size == 0`, and we will assume that none of the customers placed more than one order during the month of the promotion.
 
 ## Weighted regression
 
-As in the tutorial on classical matching, the  company believes that the stratifying variables `recency`, `frequency`, and `monetary` completely account for all systematic variation  in  who used the coupon or not. In other words, the company is willing to assume that all selection is on the *observables*. Hence, among groups of customers in the same stratum---i.e., among customers who share all three values of `recency`, `frequency`, and `monetary`---we assume coupon use was essentially random. As noted in the tutorial on classical matching, this is a *very* strong assumption to make, but it is what we need to assume in order to use weighted regression to estimate average treatment effects.
+As in the tutorial on classical matching, the company believes that the stratifying variables `recency`, `frequency`, and `monetary` completely account for all systematic variation in who used the coupon. In other words, the company is willing to assume that all selection is on the *observables*. Hence, among groups of customers in the same stratum---i.e., among customers who have all three values of `recency`, `frequency`, and `monetary`---we are assuming that coupon use was essentially random. As noted in the tutorial on classical matching, this is a *very* strong assumption to make, but it is what we need to assume in order to use weighted regression to estimate average treatment effects.
 
 There are two main parts to estimating treatment effects using weighted regression. The first part involves obtaining estimates of customers' propensities to use the coupon. For this tutorial, we will use logistic regression to obtain these *propensity scores.* The second part involves performing the weighted regression, using weights that are based on the propensity scores estimated in part 1.
 
@@ -94,60 +95,89 @@ To estimate the propensities, we set up a logistic regression. Because our objec
 
 ```{r}
 propensity_fit <- 
-	glm(used_coupon ~ recency + frequency + monetary, data = coupon,
-		family = binomial)
+	glm(used_coupon ~ recency + frequency + monetary, 
+			data = coupon, family = binomial)
 summary(propensity_fit)
 ```
 
-The  propensity scores are just the expected values of `used_coupon` from this regression:
+The propensity scores are just the expected values of `used_coupon` from this regression:
 
 ```{r M6-propensities}
 p <- predict(propensity_fit, type = 'response')
 ggplot(NULL) + stat_count(aes(x = p))
 ```
 
-The estimates show there are only 8 unique propensity scores, ranging between 0 and 1. There are only 8 unique values because there are  only 8 unique combinations of the three regressors (because they are binary).
+The plot shows that there are only 8 unique propensity scores, ranging between 0 and 1. There are only 8 unique values because there are only 8 unique combinations of the three regressors (which are binary).
 
 
 ### Part 2: Estimating average treatment effect using propensity scores in a weighted regression
 
-To estimate the average treatment effect (ATE), we will perform a linear regression of `total_order` on `used_coupon`, plus the three variables `recency`, `frequency`, and `monetary`. Importantly, we will include regression weights `w`, with `w = 1/p` if `used_coupon == 1` and `w = 1/(1-p)` if `used_coupon == 0`.
+To estimate the average treatment effect (ATE), we will perform a linear regression of `total_order` on `used_coupon`. Importantly, we will include regression weights `w`, with `w = 1/p` if `used_coupon == 1`, and `w = 1/(1-p)` if `used_coupon == 0`.
 
 ```{r}
 ate_data <- 
 	coupon %>%
-	mutate(w = case_when(used_coupon == 1 ~ 1/p,
-											 used_coupon == 0 ~ 1/(1-p)))
-ate_fit <- lm(order_size ~ used_coupon + recency + frequency + monetary, 
-							data = ate_data, weights = w)
+	mutate(w = case_when(
+		used_coupon == 1 ~ 1/p,
+		used_coupon == 0 ~ 1/(1-p)))
+ate_data
+ate_fit <- 
+	lm(order_size ~ used_coupon, 
+		 data = ate_data, 
+		 weights = w)
 summary(ate_fit)
 ```
 
-The estimated ATE is `r round(ate_fit$coef['used_coupon'], 2)`. You might recall from the classical matching tutorial that the estimated ATE using that method was closer to 10.40. The discrepancy is due to the fact that we have not estimated the propensity scores correctly (because I simulated these data, I know for a fact that the logit model we used is not correct). To demonstrate how the model used to estimate propensities affects estimates of treatment effects, consider the estimates we  obtain with a  different propensity model:
+The estimated ATE is `r round(ate_fit$coef['used_coupon'], 2)`. You might recall from the classical matching tutorial that the estimated ATE using that method was closer to 10.40. The discrepancy is due to the fact that we have not estimated the propensity scores correctly! Because I simulated these data, I know for a fact that the logit model we are using to estimate the propensities is not correct. Here I want to demonstrate how the model we use to estimate propensities can affect estimates of treatment effects. For example, compare the estimated ATE with one obtained using a  different propensity model:
 
 ```{r}
 propensity_fit2 <- 
-	glm(used_coupon ~ recency * frequency * monetary, data = coupon,
-		family = binomial)
+	glm(used_coupon ~ recency * frequency * monetary, 
+			data = coupon, family = binomial)
 summary(propensity_fit2)
 ```
 
-Due to the  interactions in the regression model above, we end up estimating 8 parameters in this model (essentially, 8 intercepts for each of the 8 unique combinations of `recency`, `frequency`, and `monetary`).
+Due to the interactions in the regression model above, we end up estimating 8 parameters in this model (essentially, 8 intercepts for each of the 8 unique combinations of `recency`, `frequency`, and `monetary`).
 
 ```{r}
 p2 <- predict(propensity_fit2, type = 'response')
 ate_data2 <- 
 	coupon %>%
-	mutate(w = case_when(used_coupon == 1 ~ 1/p2,
-											 used_coupon == 0 ~ 1/(1-p2)))
-ate_fit2 <- lm(order_size ~ used_coupon + recency + frequency + monetary, 
-							data = ate_data2, weights = w)
+	mutate(w = case_when(
+		used_coupon == 1 ~ 1/p2,
+		used_coupon == 0 ~ 1/(1-p2)))
+ate_data2
+ate_fit2 <- 
+	lm(order_size ~ used_coupon, 
+		 data = ate_data2, 
+		 weights = w)
 summary(ate_fit2)
 ```
 
 The estimated ATE is now closer to what we obtained using classical matching (and because I simulated the data, I know this is very close the true ATE). 
 
-If the model we use to  estimate the propensity scores is badly misspecified (relative to the "true" model), then the estimated treatment effect will be biased, and probably inconsistent as well. The extent of the bias depends on how misspecified the propensity score model is. Unfortunately, because we don't know the "true" propensity model, our only recourse is to hope that our propensity model has captured the most essential determinants of coupon use. Or, if we don't believe that, we can instead try to obtain whatever missing data we think would make the propensity model more "correct". 
+If the model we use to estimate the propensity scores is badly misspecified (relative to the "true" model), then the estimated treatment effect will be biased, and probably inconsistent as well. The extent of the bias depends on how misspecified the propensity score model is. Unfortunately, because we don't know the "true" propensity model, our only recourse is to hope that our propensity model has captured the most essential determinants of coupon use. Or, if we don't believe that is likely to be the case, we can try to obtain whatever missing data we think would make the propensity model more "correct".
+
+### OPTIONAL: Doubly-robust weighted regression estimators
+
+This subsection is about doubly-robust weighted regression estimators, which are described in MW 7.3. That part of chapter 7 is not required reading, so feel free to skip over this subsection.
+
+Recall that the first weighted regression we ran (above) led to an incorrect (biased, possibly inconsistent) estimated ATE, and that this happened because the propensity score model was misspecified:
+
+```{r}
+summary(ate_fit)
+```
+
+The core problem here is that, because the estimated propensity weights are misspecified, they are not able to fully block the non-causal associations between `used_coupon` and `order_size` that are leaking through the open backdoors. But what if we also adjusted for these variables in the regression of `order_size` on `used_coupon`? Would that eliminate some (or even all) of the remaining bias? The answer is "probably, yes." Such an estimator is called "doubly-robust" because it accounts for confounding bias twice—once through regression weights, and again through regression covariates.
+
+```{r}
+ate_fit_dr1 <- 
+	lm(order_size ~ used_coupon + recency + frequency + monetary, 
+		 data = ate_data, weights = w)
+summary(ate_fit_dr1)
+```
+
+The estimated ATE is still off, but it's closer to what we obtained from classical matching. And keep in mind that in a real-world setting, we would not know the true propensity model. Thus, doubly-robust estimators offer a bit of insurance against misspecification of propensity scores.
 
 ### Average treatment effects on the controls and treated
 
@@ -157,28 +187,35 @@ To estimate average treatment effects for coupon users (ATT) and non-users (ATC)
 data_with_weights <-
 	coupon %>%
 	mutate(
-		w_ate = case_when(used_coupon == 1 ~ 1/p2,
-											used_coupon == 0 ~ 1/(1 - p2)),
-		w_att = case_when(used_coupon == 1 ~ 1,
-											used_coupon == 0 ~ p2 / (1 - p2)),
-		w_atc = case_when(used_coupon == 1 ~ (1 - p2) / p2,
-											used_coupon == 0 ~ 1)
-	)
+		w_ate = case_when(
+			used_coupon == 1 ~ 1/p2,
+			used_coupon == 0 ~ 1/(1 - p2)),
+		w_att = case_when(
+			used_coupon == 1 ~ 1,
+			used_coupon == 0 ~ p2 / (1 - p2)),
+		w_atc = case_when(
+			used_coupon == 1 ~ (1 - p2) / p2,
+			used_coupon == 0 ~ 1))
+data_with_weights
 ```
 
-We will use this data frame to obtain estimates of the ATT and ATC next. First, that ATT:
+We will use this data frame to obtain estimates of the ATT and ATC next. First, the ATT:
 
 ```{r}
-att_fit <- lm(order_size ~ used_coupon + recency + frequency + monetary, 
-							data = data_with_weights, weights = w_att)
+att_fit <- 
+	lm(order_size ~ used_coupon, 
+		 data = data_with_weights, 
+		 weights = w_att)
 summary(att_fit)
 ```
 
 And finally, the ATC:
 
 ```{r}
-atc_fit <- lm(order_size ~ used_coupon + recency + frequency + monetary, 
-							data = data_with_weights, weights = w_atc)
+atc_fit <- 
+	lm(order_size ~ used_coupon, 
+		 data = data_with_weights, 
+		 weights = w_atc)
 summary(atc_fit)
 ```
 

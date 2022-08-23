@@ -71,7 +71,7 @@ if (!require("AER")) {
 
 ## Step 3
 
-Install the ECICourse package. Copy and paste  the code below into the R  console:
+Install the ECICourse package. Copy and paste the code below into the R console:
 
 ```{r message = FALSE, warning = FALSE}
 if (!require("remotes")) {
@@ -83,10 +83,11 @@ if (!require("ECICourse")) {
 }
 ```
 
+Note that this package changes every year. If you are repeating this course and previously installed the course package, you must re-install it now.
 
 ## Later in the course
 
-I will very likely need to update the ECICourse package during the course. Whenever that happens, I will create an announcement asking you to reinstall the package. To reinstall the package, you will need to run the following code:
+I might need to update the ECICourse package during the course. If that happens, I will create an announcement asking you to re-install the package. To re-install the package, you will need to run the following code:
 
 ```{r message = FALSE, warning = FALSE, eval = FALSE}
 unloadNamespace('ECICourse')

@@ -29,7 +29,8 @@ code {
 if (require(canvasapicore)) {
   knitr::opts_knit$set(upload.fun = function(file) {
     canvasapicore::load_token_and_domain()
-    resp <- cnvs::cnvs_upload("/api/v1/folders/607253/files", file)
+  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
+    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
     structure(resp$url, XML = resp)
   })
 }
@@ -84,27 +85,26 @@ ggplot(fieldexp, aes(x = factor(D), y = Y)) +
 
 We will estimate the average treatment effect (ATE) for this experiment as the difference in values of `Y` when `D == 1` versus when `D == 0`. These  values are:
 
-
 ```{r}
 fieldexp %>%
   group_by(D) %>%
-  summarise(Y = mean(Y))
+  summarise(Y_avg = mean(Y))
 ```
 
-The  code below: 1) calculates the average values of `Y` for the two values of `D`, 2) orders the output according to the value of `D`,  3) extracts the two values of `Y`, and 4)  calculates their difference (subtracting the first value of `Y` for `D == 0` from the second value of `Y` for `D == 1`).  These  steps produce a single number representing the estimated average  treatment effect.
+The code below: 1) calculates the average values of `Y` for the two values of `D`, 2) orders the output according to the value of `D`,  3) extracts the two values of `Y_avg`, and 4)  calculates their difference (subtracting the first value of `Y_avg` for `D == 0` from the second value of `Y_avg` for `D == 1`).  These  steps produce a single number representing the estimated average  treatment effect.
 
 ```{r}
 fieldexp %>%
   group_by(D) %>%
-  summarise(Y = mean(Y), .groups = 'drop') %>%
+  summarise(Y_avg = mean(Y), .groups = 'drop') %>%
   arrange(D) %>%
-  getElement('Y') %>%
+  getElement('Y_avg') %>%
   diff()
 ```
 
 *Note:* the `.groups = 'drop'` argument in the call to `summarise` prevents the message `summarise() ungrouping output (override with .groups argument)`  from being printed.
 
-It will be  useful later to encapsulate this calculation into a function, so let's create that now:
+Later, it will be  useful to have this calculation encapsulated into a single function, so we will create that function now:
 
 ```{r}
 get_ATE <- function(df) {
@@ -128,21 +128,21 @@ sate <- round(ate, 3)
 
 ## Randomization inference
 
-Should we trust that the estimate of `r sate` reflects a real difference in grades,  or could that estimate differ from zero simply because of sampling variation? We  will use randomization inference to address this question.
+Should we trust that the estimated ATE of `r sate` reflects a true difference in grades due to the software, or should we be concerned that this estimate has occurred simply as the result of random sampling variation? We will use randomization inference to address this question.
 
-We  start by noting that there are many ways the experiment could have  assigned the 360 students into two groups of 160 each. In  fact, there are 360! / (160! 160!) different ways to assign students  into these two groups.  That's a huge number.
+We start by noting that there are many ways the experiment could have  assigned the 320 students into two groups of 160 each. In  fact, there are 320! / (160! 160!) different ways to assign students  into these two groups.  That's a huge number.
 
 ```{r}
-choose(360, 160)
+choose(320, 160)
 ```
 
-This number is so large that R  cannot represent it exactly as an integer (it is more than 100 digits  long).
+This number is so large that R  cannot represent it exactly as an integer (it is almost 100 digits long). It is not feasible consider every one of these possible random assignments.
 
-The  idea behind randomization inference is this: We start  with a working  assumption that the sharp null hypothesis  is correct. That is,  we assume that the treatment effect is exactly 0  for every student. This is the same as assuming that the potential outcomes for each student under `D == 0` and `D == 1`  are  the same, which means that Y(1) = Y(0), and both are equal to  the values  of  `Y` that are  observed in the data.  
+The idea behind randomization inference is this: We start  with a working  assumption that the sharp null hypothesis  is correct. That is,  we assume that the treatment effect is exactly 0  for *every student.* This is the same as assuming that the potential outcomes for each student under `D == 0` and `D == 1`  are  the same. This further implies that if the sharp null hypothesis is true, then Y(1) = Y(0), and both potential outcomes are equal to whatever values  of  `Y` occur in the data.  
 
-If these assumptions are correct, then our estimate of the ATE (`r sate`) differs from 0 simply as a result of the way students were assigned  to the treatment  and control groups. This leads to the question of how "typical" our estimate is, if it is simply due to chance. We cannot answer this question exactly, because the number of ways to randomize the students is  so large. But we can approximate it. 
+If all of these assumptions (from the sharp null hypothesis) are correct, then the estimate of the ATE (`r sate`) differs from 0 due to the way students were assigned  to the treatment  and control groups. This leads to the question, if this estimate is due entirely to sampling variation, how "typical" is the estimate we have obtained? We cannot answer this question exactly, because the number of ways to randomize the students is so large. But we can approximate it. 
 
-We'll build this approximation in  steps. Let's first consider a single, hypothetical assignment of students to treatment and control. This assignment differs from the one we obtained in the actual  experiment, but it was equally likely to have been occurred.
+We'll build this approximation in  steps. Let's first consider a single, hypothetical assignment of students to treatment and control. This assignment differs from the one we obtained in the actual experiment, but it was equally likely to have occurred.
 
 ```{r}
 set.seed(1)             # so your results match mine
@@ -152,7 +152,7 @@ sum(new_D == 1)
 sum(new_D == 0)
 ```
 
-If this assignment had happened, and if the sharp null  hypothesis  were true,  then we would have obtained the following estimate  of the ATE:
+If this particular random assignment had actually happened, and if the sharp null  hypothesis  is in fact true,  then we would have obtained the following estimate  of the ATE:
 
 ```{r}
 fieldexp %>%
@@ -179,7 +179,7 @@ get_random_ATE_under_sharp_null()
 get_random_ATE_under_sharp_null()
 ```
 
-If we  generate many such estimates of the ATE, how do they  compare to the one we actually obtained? To answer that  question, we need to rerun this function many  times (we'll use 1000 for this  example):
+If we  generate many such estimates of the ATE, how do they  compare to the estimate we actually obtained? To answer that question, we need to rerun this function many  times (we'll use 1000 for this  example):
 
 ```{r}
 random_ATEs_under_sharp_null <-  
@@ -195,20 +195,20 @@ ggplot(NULL) +
   geom_vline(aes(xintercept = ate))
 ```
 
-Only a few of the 1000 simulated ATEs are more positive than the one we  did obtain.  We can  calculate  this proportion exactly:
+The vertical line represents the ATE obtained from the experiment, and the values in the histogram represent other estimates of the ATE that might have occurred if the null hypothesis is true. Only a few of the 1000 simulated ATEs are more positive than the one we  did obtain.  We can  calculate  this proportion exactly:
 
 ```{r}
 p <- mean(ate < random_ATEs_under_sharp_null)
 p
 ```
 
-This proportion is a statistic  that we call a p-value. It  is an estimate of the  probability of obtaining an estimated ATE greater  than the one we did obtain,   assuming the sharp null hypothesis is true. For this experiment, the p-value is approximately `r p`.
+This proportion is a statistic  that we call a p-value. For this experiment, it is the estimated probability of estimating an ATE greater than the one we did obtain if the sharp null hypothesis is true. The p-value for this hypothesis, given the experiment we actually conducted, is approximately `r p`.
 
 
 
 ## Using the coin package
 
-The code above is  meant to be instructive, meaning it both performs permutation test and tries to explain how a permutation test works. Because permutation tests are important for interpreting the  results of randomized experiments, there are  R packages that can do it more efficiently and with less code. 
+The code above is  meant to be instructive, so it has the dual responsibility of conducting a permutation test while explaining how a permutation test works.  Because permutation tests are important for interpreting the  results of randomized experiments, there are  R packages that can do it more efficiently, and with less code. 
 
 One such package is called  `coin`. If you don't have this package already, you can install it now:
 
@@ -230,7 +230,7 @@ perm_test <-
 pvalue(perm_test)
 ```
 
-The result of this permutation test is shown above. Moreover, because the  permutation test uses  a random subset of all possible assignments to treatment and control, the p-value itself is subject to sampling variation. Hence the output above shows a confidence interval around the p-value.
+The result of this permutation test is shown above. Moreover, because the  permutation test uses  a random subset of all possible assignments to treatment and control, the p-value itself is subject to sampling variation. Hence the output above shows a confidence interval around the p-value (notice that, in this case, the p-value we simulated earlier falls within this range).
 
 
 
