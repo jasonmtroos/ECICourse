@@ -32,7 +32,7 @@ knitr::opts_chunk$set(
 ```
 
 
-Perform the following steps to ensure you have the necessary R packages for this course installed. When you are done, click on "Mark as done" in the top-right corner of this page.
+Perform the following steps to ensure you have the necessary R packages for this course installed. When you are done, click on "Mark as done" in the bottom-right corner of this page.
 
 ## Step 1
 

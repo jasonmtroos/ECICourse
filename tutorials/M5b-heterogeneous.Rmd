@@ -41,7 +41,7 @@ knitr::opts_chunk$set(
 ```
 
 
-Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the top-right corner of this page.
+Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the bottom-right corner of this page.
 
 Start by loading packages:
 
