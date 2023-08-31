@@ -4,35 +4,66 @@ output:
   rmarkdown::html_document:
     fig_width: 6
     fig_height: 4
-    mathjax: null
-    theme: cerulean
+    theme: flatly
+    mathjax: NULL
     highlight: pygments
     self_contained: false
+    pandoc_args: ["--mathjax"]
 editor_options: 
   chunk_output_type: console
 ---
 
+
 <style>
+pre.sourceCode {
+  background-color: #fcffff;
+  color: #262c2d;
+}
+code span.at {
+  color: #ca863c;
+}
+code span.dv {
+  color: #047d39;
+}
+code span.fu {
+  color: #7629d2;
+}
+code span.do {
+  color: #999;
+  font-style: normal;
+}
+code span.st {
+  color: #cc4e11;
+}
+code span.sc {
+  color: #ca7dac;
+}
 pre > code.sourceCode a {
   display: none;
 }
-pre {
-  border-width: 0px;
+blockquote > p {
+  font-size: 13px !important;
+  color: #647980;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
 }
-code {
-  border-width: 0px;
+blockquote > code {
+   rgba(0, 0, 0, 0.02);
 }
 </style>
 
+
 ```{r, include = FALSE}
+ECICourse::upload_images_to_canvas()
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
+  echo = TRUE,
+  message = TRUE,
+  collapse = TRUE
 )
 ```
 
 
-Perform the following steps to ensure you have the necessary R packages for this course installed. When you are done, click on "Mark as done" in the bottom-right corner of this page.
+Perform the following steps to ensure you have the necessary R packages for this course installed. 
 
 ## Step 1
 
