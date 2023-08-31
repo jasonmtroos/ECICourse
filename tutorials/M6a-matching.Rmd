@@ -4,40 +4,64 @@ output:
   rmarkdown::html_document:
     fig_width: 6
     fig_height: 4
-    mathjax: null
-    theme: cerulean
+    theme: flatly
+    mathjax: NULL
     highlight: pygments
     self_contained: false
+    pandoc_args: ["--mathjax"]
 editor_options: 
   chunk_output_type: console
 ---
 
+
 <style>
+pre.sourceCode {
+  background-color: #fcffff;
+  color: #262c2d;
+}
+code span.at {
+  color: #ca863c;
+}
+code span.dv {
+  color: #047d39;
+}
+code span.fu {
+  color: #7629d2;
+}
+code span.do {
+  color: #999;
+  font-style: normal;
+}
+code span.st {
+  color: #cc4e11;
+}
+code span.sc {
+  color: #ca7dac;
+}
 pre > code.sourceCode a {
   display: none;
 }
-pre {
-  border-width: 0px;
+blockquote > p {
+  font-size: 13px !important;
+  color: #647980;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
 }
-code {
-  border-width: 0px;
+blockquote > code {
+   rgba(0, 0, 0, 0.02);
 }
 </style>
 
 
 ```{r, include = FALSE}
-# if (require(canvasapicore)) {
-#   knitr::opts_knit$set(upload.fun = function(file) {
-#     canvasapicore::load_token_and_domain()
-#     resp <- cnvs::cnvs_upload("/api/v1/folders/601289/files", file)
-#     structure(resp$url, XML = resp)
-#   })
-# }
+ECICourse::upload_images_to_canvas()
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
+  echo = TRUE,
+  message = TRUE,
+  collapse = TRUE
 )
 ```
+
 
 
 Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the bottom-right corner of this page.
@@ -49,11 +73,11 @@ library(ECICourse)
 library(tidyverse)
 ```
 
-The data for this tutorial describe a fictional observational study  conducted by an online seller of accessories for smart phones and tablet computers. The company emailed a single-use coupon code to all `N = 20000` customers in its database. The coupons, which were valid on orders of €5 or more, could be used to receive a 30% discount on the customers' next order, as long as they were redeemed within the next month.
+The data for this tutorial describe a fictional observational study conducted by an online seller of accessories for smart phones and tablet computers. The company emailed a single-use coupon code to all 16,576 customers in its database whose most recent order was between 1 and 6 months ago. The coupons could be used to receive a 30% discount the next order, as long as they were redeemed within the next month.
 
-The company wants to learn how much order sizes increased as a result of customers using the coupons. However, because the customers chose whether to use the coupon or not, there is selection. The company therefore realizes that the naive estimator of the average treatment effect will be biased and inconsistent. 
+The company wants to learn how much revenue increased as a result of customers using the coupons. However, because the customers chose whether to use the coupon or not, there is a problem of selection (non-random treatment). For example, high frequency customers might be more likely to place an order during the experiment than low frequency customers. The company therefore realizes that the naive estimator of the average treatment effect will be biased and inconsistent. 
 
-In this tutorial, we will use a classical matching strategy to calculate the average treatment effects among the treated (ATT; those using the coupons on their orders), controls (ATC; those who did not use the coupon), and the average customer (ATE).
+In this tutorial, we will use a classical matching strategy to calculate the average treatment effects among the treated (ATT; those using the coupons on their orders), controls (ATC; those who did not use the coupon), and all customers (ATE).
 
 
 ## Data
@@ -64,95 +88,106 @@ To obtain the data describing this experiment, run the following code:
 coupon <- get_ECI_data('module-6-tutorial')
 ```
 
-The data contain an id for each customer (`customer`), background information describing each  customer (see below), an indicator of whether the customer redeemed the coupon (`used_coupon`), and the size of the first order the customer placed during the promotion (not including the discount, `order_size`). If no order was placed, then `order_size == 0`. To simplify this tutorial, we will assume that none of the customers placed more than one order  during the month of the promotion.
+The data contain an id for each customer (`customer`), background information describing each  customer (explained below), indicators for whether the customer placed an order (`placed_order`), whether they redeemed the coupon with that order (`used_coupon`), and the size of the first order the customer placed during the promotion, not including the discount (`order_size`). If no order was placed (`placed_order == 0`), then `order_size == 0`. To simplify this tutorial, we will assume that none of the customers placed more than one order  during the month of the promotion.
 
 ```{r}
 coupon
 ```
 
-The columns `recency`, `frequency`, and `monetary`  are  binary variables describing the past purchase behavior of each customer:
+The columns `last_order`, `num_orders`, and `avg_value` are variables describing the past purchase behavior of each customer:
 
-- The value of `recency` is set to `Overdue` if, according the company's predictive sales model, the customer is likely to place an order soon. Otherwise, the value of `recency` is set to `Recent`, meaning the customer placed an order recently enough that the company does not expect another anytime soon.
+- The value of `last_order` is set to the number of months since the customer's most recent order. 
 
-- The value of `frequency` is set to `Frequent` if the customer places orders with relatively high frequency. Otherwise, the value of `frequency` is set to `Infrequent`.
+- The value of `num_orders` is set to the number of previous orders in the last six months, binned into values of 1, 2, and 3 or more.
 
-- The value of `monetary` is set to `High value` if the customer's average order size and margin are relatively high. Otherwise, the value of `monetary` is set to `Low value.`
+- The value of `avg_value` is based on the average revenue per order, and is binned into three groups for high, medium, and low value. 
 
-The rate of coupon use varied across customers with different values of `recency`, `frequency`, and `monetary`. 
+The rate of coupon use varied across customers with different values of `last_order`, `num_orders`, and `avg_value`.
 
-```{r}
-coupon %>%
-  group_by(recency, frequency, monetary) %>%
-  summarise(used_coupon = mean(used_coupon)) 
+```{r M6a-coupon-data}
+coupon |>
+  group_by(last_order, num_orders, avg_value) |>
+  summarise(used_coupon = mean(used_coupon), .groups = 'drop') |>
+  ggplot(aes(x = last_order, y = used_coupon, 
+             colour = factor(num_orders))) + 
+  geom_line() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(breaks = seq(0, 12, by = 3)) +
+  scale_colour_viridis_d(option = 'C', end = .85) +
+  facet_wrap(~avg_value) +
+  labs(x = 'Months since last order', y = 'Percent using coupon',
+       colour = 'Previous orders') +
+  theme_bw()
 ```
 
-The output above shows that customers who placed an order recently, tend to order less frequently,  and have low monetary value redeemed the coupon at a rate of about 1%. Customers who were overdue for an order, order more frequently, and place high-value orders redeemed the coupon at a much higher rate: about 60%.
-
-Finally, notice that some customers placed orders *without* using their coupon. These customers might have deleted the email without reading it.
+Some customers placed orders *without* using their coupon. These customers might have deleted the email without reading it.
 
 ```{r}
-coupon %>%
-  group_by(recency, frequency, monetary, used_coupon) %>%
-  summarise(n_who_placed_order = sum(order_size > 0))
+coupon |>
+  group_by(used_coupon) |> 
+  summarise(num_placing_order = sum(placed_order))
 ```
+
+This raises an interesting point about the effect of the coupon. For some customers who used the coupon, receiving the coupon might have prompted them to place an order they otherwise would not have made. For these customers, we might expect the treatment effect to be rather large, because their values of Y(0) (how much they would spend without the coupon) would be equal to zero. At the same time, we can imagine that a different subset of customers who used the coupon might have placed an order even if they hadn't received the coupon. For these customers, we might expect their values of Y(0) to be greater than 0, and thus we might find a relatively smaller treatment effect. 
+
+Which of these two processes is actually at play is unobserved to us. By assuming that selection is on the observables (and only on the observables), we are assuming that among any group of customers with the same observed variables, the unobserved process determining whether a customer uses the coupon is unrelated to the size of their treatment effect. **This is a very strong assumption!** 
 
 ## Conditional average treatment effects
 
-The company believes that the stratifying variables `recency`, `frequency`, and `monetary` completely account for all systematic variation in whether customers used the coupon. In other words, the company is willing to assume that all selection is on the *observables*. This means that among groups of customers in the same stratum---i.e., customers who have all three values of `recency`, `frequency`, and `monetary` in common---we are assuming that coupon use was essentially random. This is a *very* strong assumption to make, but it is what we need to assume in order to use a classical matching procedure to estimate average treatment effects.
+The company believes that the stratifying variables `last_order`, `num_orders`, and `avg_value` completely account for all systematic variation in whether customers used the coupon. In other words, the company is willing to assume that all selection is on the *observables*. This means that among groups of customers in the same stratum---i.e., customers who have all three values of `last_order`, `num_orders`, and `avg_value` in common---we are assuming that coupon use was essentially random with respect to their potential outcomes. To repeat, this is a *very* strong assumption to make, but it is what we need to assume in order to use a classical matching procedure to estimate average treatment effects. And in any case, the company believes this is close enough to the truth to make this assumption. 
 
-To help build intuition for how matching works, we will first consider just a single stratum of customers with `recency == 'Overdue'`, `frequency == 'Frequent'`, and `monetary == 'High value'`:
+To help build intuition for how matching works, we will first consider just a single stratum of customers with `last_order == 3`, `num_orders == '2'`, and `avg_value == 'Medium value'`:
 
 ```{r}
-coupon %>%
-  filter(recency == 'Overdue' & frequency == 'Frequent' & monetary == 'High value')
+coupon |>
+  filter(last_order == 3 & num_orders == '2' & avg_value == 'Medium value')
 ```
 
 ```{r echo = FALSE, results = 'hide'}
-high_S <- coupon %>%
-  filter(recency == 'Overdue' & frequency == 'Frequent' & monetary == 'High value')
+high_S <- coupon |>
+  filter(last_order == 3 & num_orders == '2' & avg_value == 'Medium value')
 ```
 
 The assumption of selection on the observables means that within this group, coupon use is independent of *potential* outcomes---how large orders *would be* when using or not using a coupon. Under this assumption, any difference in average order size among coupon users and non-users (in this stratum) is due to the coupon.
 
 ```{r}
-coupon %>%
-  filter(recency == 'Overdue' & frequency == 'Frequent' & monetary == 'High value') %>%
-  group_by(used_coupon)  %>%
+coupon |>
+  filter(last_order == 3 & num_orders == '2' & avg_value == 'Medium value') |>
+  group_by(used_coupon)  |>
   summarise(avg_order_size = mean(order_size), n_customers = n())
 ```
 
 The conditional average treatment effect (CATE) for this stratum of customers is difference between these two average order sizes.
 
 ```{r}
-coupon %>%
-  filter(recency == 'Overdue' & frequency == 'Frequent' & monetary == 'High value') %>%
-  group_by(used_coupon)  %>%
-  summarise(avg_order_size = mean(order_size)) %>%
+coupon |>
+  filter(last_order == 3 & num_orders == '2' & avg_value == 'Medium value') |> 
+  group_by(used_coupon)  |>
+  summarise(avg_order_size = mean(order_size)) |>
   pivot_wider(names_from = 'used_coupon', values_from =  'avg_order_size',
-              names_prefix = 'coupon_') %>%
+              names_prefix = 'coupon_') |>
   mutate(CATE = coupon_1 - coupon_0) 
 ```
 
-Following this logic, we can calculate CATEs for *all* strata---i.e., for all unique combinations of the three stratifying variables (`recency`, `frequency`, and  `monetary`). First, we calculate the average order size among coupon users and non-users in each stratum:
+Following this logic, we can calculate CATEs for *all* strata---i.e., for all unique combinations of the three stratifying variables (`last_order`, `num_orders`, and  `avg_value`). First, we calculate the average order size among coupon users and non-users in each stratum:
 
 ```{r}
 avg_order_sizes_by_group <- 
-  coupon %>%
-  group_by(recency, frequency, monetary, used_coupon) %>%
-  summarise(avg_order_size = mean(order_size)) %>%
-  ungroup()
+  coupon |>
+  group_by(last_order, num_orders, avg_value, used_coupon) |>
+  summarise(avg_order_size = mean(order_size), .groups = 'drop')
 avg_order_sizes_by_group
 ```
 
 We can now calculate the CATE for each group:
 
 ```{r}
-avg_order_sizes_by_group %>%
+avg_order_sizes_by_group |>
   pivot_wider(names_from  = 'used_coupon', values_from = 'avg_order_size', 
-              names_prefix = 'coupon_') %>%
-  mutate(CATE = coupon_1 - coupon_0) %>%
-  rename(with_coupon = coupon_1, without_coupon = coupon_0) # renaming columns to 
-                                                            # make it easier to read
+              names_prefix = 'coupon_') |>
+  mutate(CATE = coupon_1 - coupon_0) |>
+  # renaming columns to make it easier to read:
+  rename(with_coupon = coupon_1, without_coupon = coupon_0) 
 ```
 
 The estimated CATEs shown above vary widely across groups of customers. As we will see below, one way to think of classical matching is that it works by taking weighted averages of these CATEs in order to generate unbiased and consistent estimates for the average treatment effect (ATE), average treatment effect on the treated (ATT), and the average treatment effect on the controls (ATC). The weights in the weighted averages depend on the target effect to be estimated. 
@@ -169,34 +204,36 @@ First, isolate the treatment and control groups into different data frames:
 
 ```{r}
 treatment <-
-  coupon %>%
+  coupon |>
   filter(used_coupon == 1)
 control <-
-  coupon %>%
+  coupon |>
   filter(used_coupon == 0)
 ```
 
-The two data frames are not balanced, by which we mean that within each stratum of the variables  `recency`, `frequency`, and `monetary`, there are a different number of coupon users and non-users.
+The two data frames are not balanced, by which we mean that within each stratum of the variables  `last_order`, `num_orders`, and `avg_value`, there are a different number of coupon users and non-users.
 
 ```{r}
-treatment %>%
-  count(recency, frequency, monetary)
-control %>%
-  count(recency, frequency, monetary)
+treatment |>
+  count(last_order, num_orders, avg_value)
+control |>
+  count(last_order, num_orders, avg_value)
 ```
 
-To calculate the ATT, we want to construct an *artificial* control group that is balanced with respect to the treatment group. Consider this example: There are `r sum(high_S$used_coupon)` treated customers with `recency == 'Overdue'`, `recency == 'Frequent'`, and `monetary == 'High value'`. 
+To calculate the ATT, we want to construct an *artificial* control group that is balanced with respect to the treatment group. Consider this example: There are `r sum(high_S$used_coupon)` treated customers with `last_order == 3`, `num_orders == '2'`, and `avg_value == 'Medium value'`. 
 
 
 ```{r}
 n_treated_in_this_stratum <- 
-  treatment %>%
-  filter(recency == 'Overdue' & frequency == 'Frequent' & monetary == 'High value') %>%
+  treatment |>
+  filter(last_order == 3 & num_orders == '2' & avg_value == 'Medium value') |>
   nrow()
 n_treated_in_this_stratum
 ```
 
-To calculate  the ATT, the artificial control group for this stratum needs to contain exactly `r sum(high_S$used_coupon)` coupon non-users. But because the *actual* number of customers in the control group (for this stratum) is less than `r  n_treated_in_this_stratum` (recall there are `r nrow(high_S) - n_treated_in_this_stratum` customers in this stratum who did not use the coupon), we need to sample these customers *with replacement* from the original control group when constructing the artificial control. After sampling, the artificial control group for this stratum might look something like this:
+To calculate  the ATT, the artificial control group for this stratum needs to contain exactly `r sum(high_S$used_coupon)` coupon non-users. After sampling, the artificial control group for this stratum might look something like this:
+
+<!-- But because the *actual* number of customers in the control group (for this stratum) is less than `r  n_treated_in_this_stratum` (recall there are `r nrow(high_S) - n_treated_in_this_stratum` customers in this stratum who did not use the coupon), we need to sample these customers *with replacement* from the original control group when constructing the artificial control.  -->
 
 ```{r echo = FALSE, results = 'hide'}
 set.seed(1)
@@ -204,21 +241,21 @@ set.seed(1)
 
 ```{r}
 artificial_control_for_this_stratum <- 
-  control %>%
-  filter(recency == 'Overdue' & frequency == 'Frequent' & monetary == 'High value') %>%
-  sample_n(n_treated_in_this_stratum, replace = TRUE) %>%
+  control |>
+  filter(last_order == 3 & num_orders == '2' & avg_value == 'Medium value') |>
+  sample_n(n_treated_in_this_stratum, replace = TRUE) |>
   arrange(customer)
 artificial_control_for_this_stratum
 ```
 
-Because we sampled with replacement from the actual control group, many customers are repeated in this artificial control group. 
+<!-- Because we sampled with replacement from the actual control group, many customers are repeated in this artificial control group.  -->
 
 To calculate the ATT for the entire customer base, we need to repeat this sampling procedure for each stratum (i.e., unique combination of values for the three variables). To do that, we need to know how many *treated* customers there are in each stratum. We will calculate that first:
 
 ```{r}
 n_treated_per_stratum <-
-  treatment %>%
-  count(recency, frequency, monetary, name = 'n_treated')
+  treatment |>
+  count(last_order, num_orders, avg_value, name = 'n_treated')
 n_treated_per_stratum
 ```
 
@@ -227,81 +264,70 @@ Next, within each stratum, we need to sample `n_treated` customers from the cont
 ```{r}
 control_with_n_treated <- 
     inner_join(control, n_treated_per_stratum, 
-               by = c("recency", "frequency", "monetary"))
+               by = c("last_order", "num_orders", "avg_value"))
 control_with_n_treated
 
 artificial_control <-
-  control_with_n_treated %>%
-  group_by(recency, frequency, monetary, n_treated) %>%
-  sample_n(size = n_treated[1], replace = TRUE) %>%       #  within each stratum, sample n_treated
-  ungroup() %>%                                           #    controls with replacement
+  control_with_n_treated |>
+  group_by(last_order, num_orders, avg_value, n_treated) |>
+  #  within each stratum, sample n_treated
+  #    controls with replacement:
+  sample_n(size = n_treated[1], replace = TRUE) |>       
+  ungroup() |>                                           
   select(-n_treated)
 ```
 
 The `treatment` and `artificial_control` data frames are now balanced within each stratum:
 
 ```{r}
-treatment %>%
-  count(recency, frequency, monetary)
-artificial_control %>%
-  count(recency, frequency, monetary)
+treatment |>
+  count(last_order, num_orders, avg_value)
+artificial_control |>
+  count(last_order, num_orders, avg_value)
 ```
 
-Now that we have an artificial control group that is balanced with respect to the treatment group, the next step is to combine these so we can calculate the conditional (within stratum) average treatment effect on the treated (CATT):
+Now that we have an artificial control group that is balanced with respect to the treatment group, the next step is to combine the treatment and artificial control groups in order to calculate the average treatment effect on the treated (ATT):
 
 ```{r}
 treatment_and_artificial_control <-
   bind_rows(treatment, artificial_control)
-CATTs <- 
-  treatment_and_artificial_control %>%
-  group_by(recency, frequency, monetary, used_coupon) %>%
-  summarise(avg_order_size = mean(order_size))  %>%
-  ungroup() %>%
-  pivot_wider(names_from = 'used_coupon', values_from = 'avg_order_size',
-              names_prefix = 'coupon_') %>%
-  mutate(CATT = coupon_1 - coupon_0) %>%
-  select(-coupon_0, -coupon_1)
-CATTs
+treatment_and_artificial_control |> 
+	group_by(used_coupon) |> 
+	summarise(avg_order_size = mean(order_size)) |> 
+	pivot_wider(names_from = used_coupon, values_from = avg_order_size) |> 
+	mutate(att = `1` - `0`)
 ```
 
-The final step in calculating the ATT is to take a weighted average of the values of `CATT`. The weight for each stratum is proportional to the number of *treated* customers in that stratum:
-
-```{r}
-CATT_with_n_treated_per_stratum <- 
-  CATTs %>%
-  inner_join(n_treated_per_stratum, 
-             by = c("recency", "frequency", "monetary"))
-CATT_with_n_treated_per_stratum
-CATT_with_n_treated_per_stratum  %>%
-  summarise(ATT = sum(n_treated * CATT) / sum(n_treated))
-```
 
 ### A more concise approach using dplyr
 
 The  code above is spread out with a lot of discussion. Here is a version that is more compact, and makes use of the `group_map` function in dplyr. Feel free to skip over this material and jump to the next subsection (showing how to use the Matching package).
 
 ```{r}
-coupon %>%
-  group_by(recency, frequency, monetary) %>%
-  mutate(n_treated = sum(used_coupon)) %>%   # number of customers in the treated condition within each stratum
-  group_by(recency, frequency, monetary, 
-           used_coupon, n_treated) %>%
-  group_map(                                 # apply the function below to each group_by subset of rows
+coupon |>
+  group_by(last_order, num_orders, avg_value) |>
+  # number of customers in the treated condition within each stratum:
+  mutate(n_treated = sum(used_coupon)) |>   
+  group_by(last_order, num_orders, avg_value, 
+           used_coupon, n_treated) |>
+  group_map(                                 
+                                             # apply the function below to each group_by subset of rows:
     ~sample_n(.x,                            # sample rows from this group_by subset (.x)
-              size = .y$n_treated,           # the number of rows to sample = n_treated (.y refers to the grouping variables)
-              replace = !.y$used_coupon),    # sample with replacement if we are sampling from controls, otherwise
-    .keep = TRUE) %>%                        #   sample *without* replacement if we are sampling from treatment so we
-  bind_rows() %>%                            #   get back the original treated subset
-  group_by(recency, frequency, monetary,     # calculate average order size within stratum and treatment/control
-           used_coupon, n_treated) %>%
-  summarise(
-    avg_order_size = mean(order_size)) %>%
-  ungroup() %>%
-  pivot_wider(names_from = 'used_coupon',    # finally, calculate ATT as a weighted average of CATEs
+              size = .y$n_treated,           # <- the number of rows to sample = n_treated (.y refers to the grouping variables)
+              replace = !.y$used_coupon),    # sample with replacement from the control group (sample all from the treated group)
+    .keep = TRUE) |>
+  bind_rows() |>
+  # calculate average order size for treatment/control
+  group_by(used_coupon) |>
+  summarise(avg_order_size = mean(order_size)) |>
+  # calculate ATT
+  pivot_wider(names_from = 'used_coupon',    
               values_from = 'avg_order_size',
-              names_prefix = 'coupon_') %>%  
-  summarise(ATT = sum((coupon_1 - coupon_0) * n_treated)/sum(n_treated))
+              names_prefix = 'coupon_') |>  
+  summarise(ATT = mean(coupon_1 - coupon_0))
 ```
+
+The estimated ATT is not precisely the same in the two preceding examples because the randomly sampled artificial control groups are not the same. 
 
 ### An even *more* concise approach using the Matching package
 
@@ -312,19 +338,20 @@ library(Matching)
 select <- dplyr::select     # because MASS replaced dplyr::select and we want the dplyr version
 ```
 
-To calculate the ATT using the Matching package, we need to create distinct variables for 1) the outcome variable (`order_size`), 2) the matching variables (`recency`, `frequency`, and `monetary`), and 3) the treatment variable (`used_coupon`):
+To calculate the ATT using the Matching package, we need to create distinct variables for 1) the outcome variable (`order_size`), 2) the matching variables (`last_order`, `num_orders`, and `avg_value`), and 3) the treatment variable (`used_coupon`):
 
 ```{r}
 Y <- coupon$order_size
 X <- 
-	coupon %>%
-	select(recency, frequency, monetary) %>%
-	mutate(across(everything(), unclass)) %>%     # Matching expects a matrix of numbers, not a data frame with factors
-	as.matrix()
+  coupon |>
+  select(last_order, num_orders, avg_value) |>
+  # Matching expects a matrix of numbers, not a data frame with factors:
+  mutate(across(everything(), as.numeric)) |>
+  as.matrix()
 D <- coupon$used_coupon
 att <- Match(Y = Y, Tr = D, X = X, 
-					 estimand = 'ATT', M = 1, 
-					 replace = TRUE, ties = FALSE)
+           estimand = 'ATT', M = 1, 
+           replace = TRUE, ties = TRUE)
 summary(att)
 ```
 
@@ -332,55 +359,47 @@ Notice that the `Match` procedure calculates a standard error for the estimate, 
 
 ### ATC and ATE using dplyr
 
-To calculate the ATC, we follow a very similar procedure, except we sample *treatment* cases in order to create an *artificial treatment group* that matches the number of control units in each stratum. Hence, code below is similar to what we did above. The main differences are that we now we count `n_control = sum(used_coupon == 0)`, and we sample with replacement from the treatment group (when `used_coupon == 1`):
+To calculate the ATC, we follow a very similar procedure, except we sample *treatment* cases in order to create an *artificial treatment group* that matches the number of control units in each stratum. Hence, code below is similar to what we did above. 
 
 ```{r}
 control_and_artificial_treatment <- 
-  coupon %>%
-  group_by(recency, frequency, monetary) %>%
-  mutate(n_control = sum(used_coupon == 0)) %>%
-  group_by(recency, frequency, monetary, used_coupon, n_control) %>%
+  coupon |>
+  group_by(last_order, num_orders, avg_value) |>
+  mutate(n_control = sum(used_coupon == 0)) |>
+  group_by(last_order, num_orders, avg_value, used_coupon, n_control) |>
   group_map(
     ~sample_n(.x, size = .y$n_control, 
-              replace = .y$used_coupon), .keep = TRUE) %>%
+              replace = .y$used_coupon), .keep = TRUE) |>
   bind_rows()
 ```
 
-Because most customers did not use the coupon, the resulting data frame has more observations than the original (the number of observations is exactly twice the number of customers who did not use the coupon):
-
-```{r}
-nrow(control_and_artificial_treatment)
-nrow(coupon)
-```
 
 To calculate the ATC we continue in a similar manner as before:
 
 ```{r}
-control_and_artificial_treatment %>%
-  group_by(recency, frequency, monetary, used_coupon, n_control) %>%
-  summarise(avg_order_size = mean(order_size)) %>%
-  ungroup() %>%
+control_and_artificial_treatment |>
+  group_by(used_coupon) |>
+  summarise(avg_order_size = mean(order_size), .groups = 'drop') |>
   pivot_wider(names_from = 'used_coupon', values_from = 'avg_order_size',
-              names_prefix = 'coupon_') %>%
-  summarise(ATC = sum((coupon_1 - coupon_0) * n_control)/sum(n_control))
+              names_prefix = 'coupon_') |> 
+	summarise(ATC = mean(coupon_1 - coupon_0))
 ```
 
 The ATC for  this study represents  the increase in order size we would expect among customers who didn't use the coupon, if we could somehow force them to place an order using the coupon. 
 
-To calculate the ATE, we can take a weighted average of the estimated ATT and ATC, with weights determined by the share of coupon users and non-users. Something like: `(13.48 * 3236 + 9.77 * 16764) / 20000` which  is about `r round((13.48 * 3236 + 9.77 * 16764) / 20000, 2)`.
 
 ### ATC and ATE using the Matching package
 
-As an alternative, we can simply use the Matching package to calculate the ATC and ATE, just as we did when calculating the ATT.
+We can also use the Matching package to calculate the ATC and ATE, just as we did when calculating the ATT.
 
 ```{r}
 atc <- Match(Y = Y, Tr = D, X = X, 
-					 estimand = 'ATC', M = 1, 
-					 replace = TRUE, ties = FALSE)
+           estimand = 'ATC', M = 1, 
+           replace = TRUE, ties = TRUE)
 summary(atc)
 ate <- Match(Y = Y, Tr = D, X = X, 
-					 estimand = 'ATE', M = 1, 
-					 replace = TRUE, ties = FALSE)
+           estimand = 'ATE', M = 1, 
+           replace = TRUE, ties = TRUE)
 summary(ate)
 ```
 

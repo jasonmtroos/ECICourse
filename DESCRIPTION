@@ -1,6 +1,6 @@
 Package: ECICourse
 Title: Data and Tools for my Experimentation and Causal Inference Course
-Version: 0.0.2022.0001
+Version: 0.0.2023.0001
 Authors@R: 
     person(given = "Jason",
            family = "Roos",
@@ -13,9 +13,9 @@ Encoding: UTF-8
 Language: en-US
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.0
+RoxygenNote: 7.2.3
 Depends: 
-    R (>= 2.10)
+    R (>= 4.1.0)
 Suggests: 
     testthat,
     knitr,

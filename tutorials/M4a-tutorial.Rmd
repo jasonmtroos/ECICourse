@@ -4,39 +4,61 @@ output:
   rmarkdown::html_document:
     fig_width: 6
     fig_height: 4
-    mathjax: null
-    theme: cerulean
+    theme: flatly
+    mathjax: NULL
     highlight: pygments
     self_contained: false
+    pandoc_args: ["--mathjax"]
 editor_options: 
   chunk_output_type: console
 ---
 
+
 <style>
+pre.sourceCode {
+  background-color: #fcffff;
+  color: #262c2d;
+}
+code span.at {
+  color: #ca863c;
+}
+code span.dv {
+  color: #047d39;
+}
+code span.fu {
+  color: #7629d2;
+}
+code span.do {
+  color: #999;
+  font-style: normal;
+}
+code span.st {
+  color: #cc4e11;
+}
+code span.sc {
+  color: #ca7dac;
+}
 pre > code.sourceCode a {
   display: none;
 }
-pre {
-  border-width: 0px;
+blockquote > p {
+  font-size: 13px !important;
+  color: #647980;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
 }
-code {
-  border-width: 0px;
+blockquote > code {
+   rgba(0, 0, 0, 0.02);
 }
 </style>
 
 
 ```{r, include = FALSE}
-if (require(canvasapicore)) {
-  knitr::opts_knit$set(upload.fun = function(file) {
-    canvasapicore::load_token_and_domain()
-  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
-    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
-    structure(resp$url, XML = resp)
-  })
-}
+ECICourse::upload_images_to_canvas()
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
+  echo = TRUE,
+  message = TRUE,
+  collapse = TRUE
 )
 ```
 
@@ -50,7 +72,7 @@ library(ECICourse)
 library(tidyverse)
 ```
 
-The  data for this tutorial describe the same fictional field  experiment,  conducted by an educational software company in cooperation with a local university, that was described in the previous tutorial. To recap: Students in the same degree program were randomized into two  conditions before entering  a required, core course. In the  treatment condition, students received access to the educational software. In the control condition, students did not  gain access to the software.
+The  data for this tutorial describe the same fictional field  experiment,  conducted by an educational software company in cooperation with a local university, that was described in a previous tutorial. To recap: Students in the same degree program were randomized into two  conditions before entering  a required, core course. In the  treatment condition, students received access to the educational software. In the control condition, students did not  gain access to the software.
 
 To obtain the data describing this experiment, run the following code:
 
@@ -69,7 +91,7 @@ fieldexp
 Next, notice that half the students were assigned to the treatment and half to the control condition:
 
 ```{r}
-fieldexp %>%
+fieldexp |>
   count(D)
 ```
 
@@ -78,7 +100,9 @@ And finally, look at the distribution of grades in the  two conditions:
 ```{r M4-dist-DY}
 ggplot(fieldexp, aes(x = factor(D), y = Y)) +
   geom_jitter(width = .1, height = .1) +
-  labs(x = 'D')
+  labs(x = 'Treatment condition, D',
+       y = 'Grade, Y') +
+  theme_bw()
 ```
 
 ## Average treatment effect
@@ -86,37 +110,39 @@ ggplot(fieldexp, aes(x = factor(D), y = Y)) +
 We will estimate the average treatment effect (ATE) for this experiment as the difference in values of `Y` when `D == 1` versus when `D == 0`. These  values are:
 
 ```{r}
-fieldexp %>%
-  group_by(D) %>%
+fieldexp |>
+  group_by(D) |>
   summarise(Y_avg = mean(Y))
 ```
 
-The code below: 1) calculates the average values of `Y` for the two values of `D`, 2) orders the output according to the value of `D`,  3) extracts the two values of `Y_avg`, and 4)  calculates their difference (subtracting the first value of `Y_avg` for `D == 0` from the second value of `Y_avg` for `D == 1`).  These  steps produce a single number representing the estimated average  treatment effect.
+The code below: 1) calculates the average values of `Y` for each value of `D`, 2) converts rows of output into columns (using `pivot_wider`), leading to a column called `Y_0` and another called `Y_1`, and 3) calculates their difference (subtracting `Y_0` from `Y_1`).  These  steps produce a single number representing an estimate of the ATE.
 
 ```{r}
-fieldexp %>%
-  group_by(D) %>%
-  summarise(Y_avg = mean(Y), .groups = 'drop') %>%
-  arrange(D) %>%
-  getElement('Y_avg') %>%
-  diff()
+fieldexp |>
+  group_by(D) |>
+  summarise(Y_avg = mean(Y), .groups = 'drop') |> 
+  pivot_wider(names_from = 'D', values_from = 'Y_avg',
+              names_prefix = 'Y_') |> 
+	mutate(ATE_est = Y_1 - Y_0) |> 
+	getElement('ATE_est')
 ```
 
 *Note:* the `.groups = 'drop'` argument in the call to `summarise` prevents the message `summarise() ungrouping output (override with .groups argument)`  from being printed.
 
-Later, it will be  useful to have this calculation encapsulated into a single function, so we will create that function now:
+Later, it will be  useful to have this estimation procedure encapsulated in a single function. We will create that function now:
 
 ```{r}
 get_ATE <- function(df) {
-	df %>%
-		group_by(D) %>%
-		summarise(Y = mean(Y), .groups = 'drop') %>%
-		arrange(D) %>%
-		getElement('Y') %>%
-		diff()
+  df |>
+  group_by(D) |>
+  summarise(Y_avg = mean(Y), .groups = 'drop') |> 
+  pivot_wider(names_from = 'D', values_from = 'Y_avg',
+              names_prefix = 'Y_') |> 
+	mutate(ATE_est = Y_1 - Y_0) |> 
+	getElement('ATE_est')
 }
 ate <- 
-  fieldexp %>%
+  fieldexp |>
   get_ATE()
 ate
 ```
@@ -128,7 +154,7 @@ sate <- round(ate, 3)
 
 ## Randomization inference
 
-Should we trust that the estimated ATE of `r sate` reflects a true difference in grades due to the software, or should we be concerned that this estimate has occurred simply as the result of random sampling variation? We will use randomization inference to address this question.
+Should we trust that the estimated ATE of `r sate` reflects a true difference in grades caused by access to the software, or should we be concerned that this estimate is non-zero simply due to random sampling variation? We will use randomization inference to address this question.
 
 We start by noting that there are many ways the experiment could have  assigned the 320 students into two groups of 160 each. In  fact, there are 320! / (160! 160!) different ways to assign students  into these two groups.  That's a huge number.
 
@@ -136,27 +162,33 @@ We start by noting that there are many ways the experiment could have  assigned 
 choose(320, 160)
 ```
 
-This number is so large that R  cannot represent it exactly as an integer (it is almost 100 digits long). It is not feasible consider every one of these possible random assignments.
+This number is so large that R is unable to represent it precisely as an integer value (the number is almost 100 digits long), and instead represents it approximately as floating-point number. It is unfeasible to consider every one of these possible random assignments, so we will rely on randomization inference.
 
-The idea behind randomization inference is this: We start  with a working  assumption that the sharp null hypothesis  is correct. That is,  we assume that the treatment effect is exactly 0  for *every student.* This is the same as assuming that the potential outcomes for each student under `D == 0` and `D == 1`  are  the same. This further implies that if the sharp null hypothesis is true, then Y(1) = Y(0), and both potential outcomes are equal to whatever values  of  `Y` occur in the data.  
+The idea behind randomization inference is this: We start  with a working  assumption that the sharp null hypothesis  is correct. That is, our working assumption is that ITE is exactly 0  for *every student.* This is the same as assuming that the potential outcomes for each student under `D == 0` and `D == 1`  are the same (if Y(1) - Y(0) = 0, then Y(1) = Y(0)). Hence, if the sharp null hypothesis is true, it *must* be the case that Y(1) = Y(0). That means that whatever value of Y is observed in the data for a given student will necessarily be equal to both Y(1) and Y(0) for that student.
 
-If all of these assumptions (from the sharp null hypothesis) are correct, then the estimate of the ATE (`r sate`) differs from 0 due to the way students were assigned  to the treatment  and control groups. This leads to the question, if this estimate is due entirely to sampling variation, how "typical" is the estimate we have obtained? We cannot answer this question exactly, because the number of ways to randomize the students is so large. But we can approximate it. 
+Under the working assumption that the sharp null hypothesis is correct, the estimated value of the ATE we calculated (`r sate`) differs from 0 only because of the way students were randomized into the treatment and control groups. 
 
-We'll build this approximation in  steps. Let's first consider a single, hypothetical assignment of students to treatment and control. This assignment differs from the one we obtained in the actual experiment, but it was equally likely to have occurred.
+This leads to the question: If this estimate is due entirely to sampling variation, how "typical" is the estimate we obtained? We cannot answer this question exactly, because the number of ways to randomize the students is too large. However, we can estimate an approximate answer to this question.
+
+We will build this approximation in steps. Let's first consider a single, hypothetical assignment of students to treatment and control. This assignment (probably) differs from the one we obtained in the actual experiment, but it was equally likely to have occurred.
 
 ```{r}
 set.seed(1)             # so your results match mine
 new_D <- sample(rep(0:1, 160), 320, replace = FALSE)
 new_D
+# verify that exactly half of the students are assigned to each condition
 sum(new_D == 1)
 sum(new_D == 0)
 ```
 
-If this particular random assignment had actually happened, and if the sharp null  hypothesis  is in fact true,  then we would have obtained the following estimate  of the ATE:
+Had this particular random assignment actually occurred, and if the sharp null  hypothesis is, in fact, true---then we would have obtained the following estimate  of the ATE:
 
 ```{r}
-fieldexp %>%
-  mutate(D = new_D) %>%
+fieldexp |>
+	# replace the random assignment from the experiment
+	# with our new, hypothetical alternative assignment:
+  mutate(D = new_D) |> 
+	# estimate the ATE for this alternative assignment
   get_ATE()
 ```
 
@@ -164,10 +196,10 @@ Combining this operation into a single function:
 
 ```{r}
 get_random_ATE_under_sharp_null <- function() {
-	new_D <- sample(rep(0:1, 160), 320, replace = FALSE)
-	fieldexp %>%
-		mutate(D = new_D) %>%
-		get_ATE()
+  new_D <- sample(rep(0:1, 160), 320, replace = FALSE)
+  fieldexp |>
+    mutate(D = new_D) |>
+    get_ATE()
 }
 ```
 
@@ -179,12 +211,12 @@ get_random_ATE_under_sharp_null()
 get_random_ATE_under_sharp_null()
 ```
 
-If we  generate many such estimates of the ATE, how do they  compare to the estimate we actually obtained? To answer that question, we need to rerun this function many  times (we'll use 1000 for this  example):
+If we simulate many such estimates of the ATE, we can consider how the estimate we initially obtained compares to these simulated estimates. So we will rerun this function many times (we'll use 1000 for this example), to generate a sample of 1000 hypothetical estimated ATEs from our experiment under the working hypothesis that the sharp null is true:
 
 ```{r}
 random_ATEs_under_sharp_null <-  
-	rerun(1000, get_random_ATE_under_sharp_null()) %>%
-	unlist()
+  map(1:1000, ~get_random_ATE_under_sharp_null()) |>
+  unlist()
 ```
 
 We can now compare  the estimate of the ATE obtained from the experiment (`r sate`) to these simulated estimates generated under the  assumption  that  the sharp null hypothesis is true. 
@@ -192,25 +224,25 @@ We can now compare  the estimate of the ATE obtained from the experiment (`r sat
 ```{r M4-dist-ATE-sharp-null}
 ggplot(NULL) +
   stat_bin(aes(x = random_ATEs_under_sharp_null), bins = 50) +
-  geom_vline(aes(xintercept = ate))
+  geom_vline(aes(xintercept = ate), colour = 'orange') +
+	theme_bw()
 ```
 
-The vertical line represents the ATE obtained from the experiment, and the values in the histogram represent other estimates of the ATE that might have occurred if the null hypothesis is true. Only a few of the 1000 simulated ATEs are more positive than the one we  did obtain.  We can  calculate  this proportion exactly:
+The vertical line represents the estimated ATE produced from the actual experiment, and the values in the histogram represent other estimates of the ATE that might have occurred if the null hypothesis were to be true. Only a few of the 1000 simulated ATEs are more positive than the one we  did obtain.  We can  calculate  the fraction of simulated ATEs that are bigger than the one we actually obtained:
 
 ```{r}
 p <- mean(ate < random_ATEs_under_sharp_null)
 p
 ```
 
-This proportion is a statistic  that we call a p-value. For this experiment, it is the estimated probability of estimating an ATE greater than the one we did obtain if the sharp null hypothesis is true. The p-value for this hypothesis, given the experiment we actually conducted, is approximately `r p`.
-
+This proportion is a statistic that we call a p-value. For this experiment, it is the estimated probability of obtaining an estimated ATE greater than the one we actually got, were the sharp null hypothesis to be true. The p-value for our estimated ATE under the sharp null hypothesis is approximately `r p`.
 
 
 ## Using the coin package
 
-The code above is  meant to be instructive, so it has the dual responsibility of conducting a permutation test while explaining how a permutation test works.  Because permutation tests are important for interpreting the  results of randomized experiments, there are  R packages that can do it more efficiently, and with less code. 
+The code above is  meant to be instructive, so it has the dual responsibility of conducting a permutation test while also explaining how a permutation test works.  Because permutation tests are important for interpreting the  results of randomized experiments, there are  R packages that can do it more efficiently than our code. 
 
-One such package is called  `coin`. If you don't have this package already, you can install it now:
+One such package is called  `coin`. If you don't have this package installed already, you can do so now:
 
 ```{r}
 if (!require(coin)) {
@@ -219,7 +251,7 @@ if (!require(coin)) {
 library(coin)
 ```
 
-The following code runs a permutation test, generating a conceptually identical p-value to the one we generated  above.
+The following code runs a permutation test that generates a p-value that is conceptually the same as the one we just produced.
 
 ```{r}
 perm_test <- 

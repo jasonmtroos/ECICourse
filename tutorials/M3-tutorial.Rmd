@@ -4,23 +4,42 @@ output:
   rmarkdown::html_document:
     fig_width: 6
     fig_height: 4
-    mathjax: null
-    theme: cerulean
+    theme: flatly
+    mathjax: NULL
     highlight: pygments
     self_contained: false
+    pandoc_args: ["--mathjax"]
 editor_options: 
   chunk_output_type: console
 ---
 
+
 <style>
+pre.sourceCode {
+	background-color: #fcffff;
+	color: #262c2d;
+}
+code span.at {
+  color: #ca863c;
+}
+code span.dv {
+  color: #047d39;
+}
+code span.fu {
+  color: #7629d2;
+}
+code span.do {
+  color: #999;
+  font-style: normal;
+}
+code span.st {
+  color: #cc4e11;
+}
+code span.sc {
+  color: #ca7dac;
+}
 pre > code.sourceCode a {
   display: none;
-}
-pre {
-  border-width: 0px;
-}
-code {
-  border-width: 0px;
 }
 blockquote > p {
   font-size: 13px !important;
@@ -35,20 +54,17 @@ blockquote > code {
 
 
 ```{r, include = FALSE}
-if (require(canvasapicore)) {
-  knitr::opts_knit$set(upload.fun = function(file) {
-    canvasapicore::load_token_and_domain()
-  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
-    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
-    structure(resp$url, XML = resp)
-  })
-}
+ECICourse::upload_images_to_canvas()
 knitr::opts_chunk$set(
+  echo = TRUE,
+  message = TRUE,
   collapse = TRUE,
-  fig.width = 3, fig.height = 3,
-  comment = "#>"
+  fig.width = 3, fig.height = 3
 )
 ```
+
+
+
 
 
 Read along with this tutorial, and run the R code in RStudio as you go (copy and paste, or type directly into R). After you have completed this tutorial, mark this task as done by clicking on "Mark as done" in the bottom-right corner of this page.

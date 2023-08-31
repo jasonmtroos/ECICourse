@@ -1,43 +1,55 @@
 ---
-title: "R Tutorial: Calculating average treatment effects"
+title: "R Tutorial: Estimating average treatment effects"
 output: 
   rmarkdown::html_document:
     fig_width: 6
     fig_height: 4
-    mathjax: null
-    theme: cerulean
+    theme: flatly
+    mathjax: NULL
     highlight: pygments
     self_contained: false
+    pandoc_args: ["--mathjax"]
 editor_options: 
   chunk_output_type: console
 ---
 
 
 <style>
+pre.sourceCode {
+	background-color: #fcffff;
+	color: #262c2d;
+}
+code span.at {
+  color: #ca863c;
+}
+code span.dv {
+  color: #047d39;
+}
+code span.fu {
+  color: #7629d2;
+}
+code span.do {
+  color: #999;
+  font-style: normal;
+}
+code span.st {
+  color: #cc4e11;
+}
+code span.sc {
+  color: #ca7dac;
+}
 pre > code.sourceCode a {
   display: none;
-}
-pre {
-  border-width: 0px;
-}
-code {
-  border-width: 0px;
 }
 </style>
 
 
 ```{r, include = FALSE}
-if (require(canvasapicore)) {
-  knitr::opts_knit$set(upload.fun = function(file) {
-    canvasapicore::load_token_and_domain()
-  	file <- stringr::str_replace(file, "Dropbox (Erasmus Universiteit Rotterdam)", "Dropbox_RSM")
-    resp <- cnvs::cnvs_upload(file, "/api/v1/folders/1191228/files")
-    structure(resp$url, XML = resp)
-  })
-}
+ECICourse::upload_images_to_canvas()
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
+  echo = TRUE,
+  message = TRUE,
+  collapse = TRUE
 )
 ```
 
@@ -74,7 +86,7 @@ fieldexp
 Half the students were assigned to the treatment and half to the control condition:
 
 ```{r}
-fieldexp %>%
+fieldexp |> 
   count(D)
 ```
 
@@ -83,38 +95,40 @@ Next, look at the distribution of grades in the  two conditions:
 ```{r M2-dist-DY}
 ggplot(fieldexp, aes(x = factor(D), y = Y)) +
   geom_jitter(width = .1, height = .1) +
-  labs(x = 'D')
+  labs(x = 'Treatment condition, D',
+  		 y = 'Grade, Y') +
+	theme_bw()
 ```
 
 There are no obvious problems with the data—most of the grades are 6 or higher, there are very few 10's, etc. In other words, nothing stands out as problematic. So let's continue...
 
 ## Average grades in the treatment and control conditions
 
-What was the average  grade among students who had access to the software (the treatment group,  those with `D == 1`)? To answer this, we need to calculate the average value of `Y` among students who had `D == 1`, or in other words, the mean  of `Y`, conditional on `D == 1`. 
+What was the average  grade among students who had access to the software (the treatment group, those with `D == 1`)? To answer this, we need to calculate the average value of `Y` among students who had `D == 1`, or in other words, the mean  of `Y`, conditional on `D == 1`. 
 
 
 To calculate the average outcome (grade) among students who received access to the software (students with `D == 1`), we first filter the data frame, keeping only rows with `D == 1`, and then we calculate `mean(Y)`:
 
 ```{r}
-fieldexp %>%
-  filter(D == 1) %>%
+fieldexp |> 
+  filter(D == 1) |> 
   summarise(Y = mean(Y))
 ```
 
 Next, to calculate  the average   grade among students who did not receive the  software (the  control group, those with `D == 0`),  we follow an analogous procedure:
 
 ```{r}
-fieldexp %>%
-  filter(D == 0) %>%
+fieldexp |>
+  filter(D == 0) |>
   summarise(Y = mean(Y))
 ```
 
 Alternatively, we can use `group_by` to calculate both of these averages at the same time. In the code below, we  summarize the mean of `Y` separately for each of the two groups defined by the two values of `D`.  We will also  use `mutate` to assign descriptive labels to the values in `D`  (renaming `D == 0` to `'Control'` and `D == 1` to `'Treatment'`).
 
 ```{r}
-fieldexp %>%
-  group_by(D) %>%
-  summarise(Y = mean(Y)) %>%
+fieldexp |>
+  group_by(D) |>
+  summarise(Y = mean(Y)) |>
   mutate(D = case_when(D == 0 ~ 'Control',
                        D == 1 ~ 'Treatment'))
 ```
@@ -122,11 +136,11 @@ fieldexp %>%
 Finally, we can use  `pivot_wider` to transform the  output, creating two new columns based on the contents of each row:
 
 ```{r}
-fieldexp %>%
-  group_by(D) %>%
-  summarise(Y = mean(Y)) %>%
+fieldexp |>
+  group_by(D) |>
+  summarise(Y = mean(Y)) |>
   mutate(D = case_when(D == 0 ~ 'Control',
-                       D == 1 ~ 'Treatment')) %>%
+                       D == 1 ~ 'Treatment')) |>
   pivot_wider(names_from = 'D', values_from = 'Y')
 ```
 
@@ -135,12 +149,12 @@ fieldexp %>%
 The average treatment effect (ATE) is 𝔼[Y(1) -  Y(0)], or equivalently, 𝔼[Y(1)] - 𝔼[Y(0)]. We don't observe the potential outcomes Y(1) and Y(0). Thus, to estimate the ATE, we work under the assumption that the conditional averages of `Y` given  `D == 1`  and `Y` given `D == 0` (which we just calculated above) are consistent  estimators of 𝔼[Y(1)] and 𝔼[Y(0)] respectively. This assumption (which is reasonable since we randomized students into treatment and control) allows us to estimate of the average treatment effect by taking the difference between the average values of `Y` when `D` is either  1 or 0. 
 
 ```{r}
-fieldexp %>%
-  group_by(D) %>%
-  summarise(Y = mean(Y)) %>%
+fieldexp |>
+  group_by(D) |>
+  summarise(Y = mean(Y)) |>
   mutate(D = case_when(D == 0 ~ 'Control',
-                       D == 1 ~ 'Treatment')) %>%
-  pivot_wider(names_from = 'D', values_from = 'Y') %>%
+                       D == 1 ~ 'Treatment')) |>
+  pivot_wider(names_from = 'D', values_from = 'Y') |>
   mutate(ATE = Treatment - Control)
 ```
 
@@ -153,5 +167,14 @@ fit <- lm(Y ~ D, data = fieldexp)
 coef(fit)
 ```
 
-In this regression, the coefficient for `D` (`r coef(fit)['D']`) is equal to the ATE, the intercept is equal to the average value of `Y` when `D == 0` (`r coef(fit)['(Intercept)']`), and the sum of the intercept and the coefficient for `D` is equal to the average value of `Y` when `D == 1` (`r sum(coef(fit))`).
+In this regression, the coefficient for `D` (`r coef(fit)['D']`) is equal to the ATE, the intercept is equal to the average value of `Y` when `D == 0` (`r coef(fit)['(Intercept)']`), and the sum of the intercept and the coefficient for `D` is equal to the average value of `Y` when `D == 1` (`r sum(coef(fit))`). That is, 
+
+* ATE = 𝔼[Y(1) -  Y(0)] = `r coef(fit)['D']`,
+
+* 𝔼[Y(0)] = `r coef(fit)['(Intercept)']`, and
+
+* 𝔼[Y(1)] = 𝔼[Y(0)] + ATE = `r coef(fit)['(Intercept)']` + `r coef(fit)['D']` = `r sum(coef(fit))`.
+
+Compare these values to the linear regression coefficients and convince yourself this is true.
+
 
