@@ -143,9 +143,9 @@ First, we will estimate the intent-to-treat effects of the incentive on 1) reven
 
 ```{r}
 loyalty_ITT <-
-  loyalty %>%
-  group_by(Z) %>%
-  summarise(Y = mean(Y)) %>%
+  loyalty |>
+  group_by(Z) |>
+  summarise(Y = mean(Y)) |>
   pivot_wider(names_from = Z, values_from = Y, 
               names_glue = 'E[Y|Z={Z}]')
 loyalty_ITT
@@ -155,8 +155,8 @@ loyalty_ITT
 
 ```{r}
 ITT <- 
-  loyalty_ITT %>%
-  mutate(ITT = `E[Y|Z=1]` - `E[Y|Z=0]`) %>%
+  loyalty_ITT |>
+  mutate(ITT = `E[Y|Z=1]` - `E[Y|Z=0]`) |>
   getElement('ITT')
 ITT
 ```
@@ -167,9 +167,9 @@ Next, we will calculate ITTd, the intent-to-treat effect of the incentive on the
 
 ```{r}
 loyalty_ITTd <-
-  loyalty %>%
-  group_by(Z) %>%
-  summarise(D = mean(D)) %>%
+  loyalty |>
+  group_by(Z) |>
+  summarise(D = mean(D)) |>
   pivot_wider(names_from = Z, values_from = D,
               names_glue = 'E[D|Z={Z}]')
 loyalty_ITTd
@@ -179,8 +179,8 @@ Both values represent the share of customers who joined the loyalty program. `E[
 
 ```{r}
 ITTd <-
-  loyalty_ITTd %>%
-  mutate(ITTd = `E[D|Z=1]` - `E[D|Z=0]`) %>%
+  loyalty_ITTd |>
+  mutate(ITTd = `E[D|Z=1]` - `E[D|Z=0]`) |>
   getElement('ITTd')
 ITTd
 ```
@@ -325,7 +325,7 @@ The second step in 2SLS is to regress `Y` on `D` using OLS---however, rather tha
 
 ```{r}
 loyalty_with_D_hat <-
-  loyalty %>%
+  loyalty |>
   mutate(D_hat = D_hat)
 loyalty_with_D_hat
 reg_Y_D_hat <- lm(Y ~ D_hat, data = loyalty_with_D_hat)

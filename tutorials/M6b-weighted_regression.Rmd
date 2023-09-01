@@ -107,15 +107,15 @@ last_order -> used_coupon -> total_order;
 num_orders -> used_coupon <- avg_value -> total_order;
 num_orders -> total_order;
 last_order -> total_order;
-}')  %>% plot()
+}')  |> plot()
 ```
 
 To estimate the propensities, we perform logistic regression. Because our objective is to estimate customers' propensities to use the coupon, `used_coupon` is the dependent variable in this regression:
 
 ```{r}
 propensity_fit <- 
-	glm(used_coupon ~ last_order + num_orders + avg_value, 
-			data = coupon, family = binomial)
+  glm(used_coupon ~ last_order + num_orders + avg_value, 
+      data = coupon, family = binomial)
 summary(propensity_fit)
 ```
 
@@ -130,8 +130,8 @@ There are 30 unique values of the propensity score, all of which are values betw
 
 ```{r}
 coupon |> 
-	distinct(last_order, num_orders, avg_value) |> 
-	arrange(last_order, num_orders, avg_value)
+  distinct(last_order, num_orders, avg_value) |> 
+  arrange(last_order, num_orders, avg_value)
 ```
 
 
@@ -142,15 +142,15 @@ To estimate the average treatment effect (ATE), we will perform a linear regress
 
 ```{r}
 ate_data <- 
-	coupon %>%
-	mutate(w = case_when(
-		used_coupon == 1 ~ 1/p,
-		used_coupon == 0 ~ 1/(1-p)))
+  coupon |>
+  mutate(w = case_when(
+    used_coupon == 1 ~ 1/p,
+    used_coupon == 0 ~ 1/(1-p)))
 ate_data
 ate_fit <- 
-	lm(order_size ~ used_coupon, 
-		 data = ate_data, 
-		 weights = w)
+  lm(order_size ~ used_coupon, 
+     data = ate_data, 
+     weights = w)
 summary(ate_fit)
 ```
 
@@ -162,8 +162,8 @@ options(width = 150)
 
 ```{r}
 propensity_fit2 <- 
-	glm(used_coupon ~ factor(last_order) * num_orders * avg_value, 
-			data = coupon, family = binomial)
+  glm(used_coupon ~ factor(last_order) * num_orders * avg_value, 
+      data = coupon, family = binomial)
 summary(propensity_fit2)
 ```
 
@@ -172,15 +172,15 @@ Due to the interactions in the regression model above, we end up estimating `r s
 ```{r}
 p2 <- predict(propensity_fit2, type = 'response')
 ate_data2 <- 
-	coupon %>%
-	mutate(w = case_when(
-		used_coupon == 1 ~ 1/p2,
-		used_coupon == 0 ~ 1/(1-p2)))
+  coupon |>
+  mutate(w = case_when(
+    used_coupon == 1 ~ 1/p2,
+    used_coupon == 0 ~ 1/(1-p2)))
 ate_data2
 ate_fit2 <- 
-	lm(order_size ~ used_coupon, 
-		 data = ate_data2, 
-		 weights = w)
+  lm(order_size ~ used_coupon, 
+     data = ate_data2, 
+     weights = w)
 summary(ate_fit2)
 ```
 
@@ -198,8 +198,8 @@ But what if we also adjusted for these variables in the regression of `order_siz
 
 ```{r}
 ate_fit_dr1 <- 
-	lm(order_size ~ used_coupon + last_order + num_orders + avg_value, 
-		 data = ate_data, weights = w)
+  lm(order_size ~ used_coupon + last_order + num_orders + avg_value, 
+     data = ate_data, weights = w)
 summary(ate_fit_dr1)
 ```
 
@@ -207,8 +207,8 @@ The estimated ATE is still off, but it is closer to what we obtained from classi
 
 ```{r}
 ate_fit_dr2 <- 
-	lm(order_size ~ used_coupon + last_order + num_orders + avg_value, 
-		 data = ate_data2, weights = w)
+  lm(order_size ~ used_coupon + last_order + num_orders + avg_value, 
+     data = ate_data2, weights = w)
 coef(ate_fit_dr2)['used_coupon']
 coef(ate_fit2)['used_coupon']
 ```
@@ -220,17 +220,17 @@ To estimate average treatment effects for coupon users (ATT) and non-users (ATC)
 
 ```{r}
 data_with_weights <-
-	coupon %>%
-	mutate(
-		w_ate = case_when(
-			used_coupon == 1 ~ 1/p2,
-			used_coupon == 0 ~ 1/(1 - p2)),
-		w_att = case_when(
-			used_coupon == 1 ~ 1,
-			used_coupon == 0 ~ p2 / (1 - p2)),
-		w_atc = case_when(
-			used_coupon == 1 ~ (1 - p2) / p2,
-			used_coupon == 0 ~ 1))
+  coupon |>
+  mutate(
+    w_ate = case_when(
+      used_coupon == 1 ~ 1/p2,
+      used_coupon == 0 ~ 1/(1 - p2)),
+    w_att = case_when(
+      used_coupon == 1 ~ 1,
+      used_coupon == 0 ~ p2 / (1 - p2)),
+    w_atc = case_when(
+      used_coupon == 1 ~ (1 - p2) / p2,
+      used_coupon == 0 ~ 1))
 data_with_weights
 ```
 
@@ -238,8 +238,8 @@ First, consider the weights for estimating the ATT among these two customers:
 
 ```{r}
 data_with_weights |> 
-	filter(customer %in% c('00038', '00062')) |> 
-	select(customer, last_order, num_orders, avg_value, used_coupon, placed_order, order_size, w_att)
+  filter(customer %in% c('00038', '00062')) |> 
+  select(customer, last_order, num_orders, avg_value, used_coupon, placed_order, order_size, w_att)
 ```
 
 The observation for customer 00062, like those for all customers in the treatment group (i.e. with `used_coupon == 1`), has a weight of 1. However, customer 00061, who is in the control group, has a much smaller weight. This weight reflects the fact that customers like 00062 and 00038 have a very low propensity score. As such, customer 00038 is not very representative of what a typical customer in the treatment group looks like. 
@@ -248,8 +248,8 @@ Now consider the observations for customers 02240 and 02018:
 
 ```{r}
 data_with_weights |>
-	filter(customer %in% c('02240', '02018')) |> 
-	select(customer, last_order, num_orders, avg_value, used_coupon, placed_order, order_size, w_att)
+  filter(customer %in% c('02240', '02018')) |> 
+  select(customer, last_order, num_orders, avg_value, used_coupon, placed_order, order_size, w_att)
 ```
 
 Customer 02018 has a higher weight than 00038, reflecting the relatively high likelihood of using the coupon among customers like 02018 and 02240. Indeed, although customer 02018 did not use the coupon, they did place an order. In total, customer 02018 looks more like a member of the treated group than customer 00038, and this is reflected in a higher weight for calculating the ATT.
@@ -258,9 +258,9 @@ We can now perform weighted regression to estimate the ATT:
 
 ```{r}
 att_fit <- 
-	lm(order_size ~ used_coupon, 
-		 data = data_with_weights, 
-		 weights = w_att)
+  lm(order_size ~ used_coupon, 
+     data = data_with_weights, 
+     weights = w_att)
 summary(att_fit)
 ```
 
@@ -268,9 +268,9 @@ And finally, the ATC:
 
 ```{r}
 atc_fit <- 
-	lm(order_size ~ used_coupon, 
-		 data = data_with_weights, 
-		 weights = w_atc)
+  lm(order_size ~ used_coupon, 
+     data = data_with_weights, 
+     weights = w_atc)
 summary(atc_fit)
 ```
 

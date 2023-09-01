@@ -105,8 +105,8 @@ Next, look at the distribution of grades in the  two conditions:
 ggplot(fieldexp, aes(x = factor(D), y = Y)) +
   geom_jitter(width = .1, height = .1) +
   labs(x = 'Treatment condition, D',
-  		 y = 'Grade, Y') +
-	theme_bw()
+       y = 'Grade, Y') +
+  theme_bw()
 ```
 
 There are no obvious problems with the data—most of the grades are 6 or higher, there are very few 10's, etc. In other words, nothing stands out as problematic. So let's continue...
